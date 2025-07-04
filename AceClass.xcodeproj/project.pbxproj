@@ -1,0 +1,563 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXContainerItemProxy section */
+		CE9C42EE2E1756A300E4B21D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = CE9C42D42E1756A100E4B21D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = CE9C42DB2E1756A100E4B21D;
+			remoteInfo = AceClass;
+		};
+		CE9C42F82E1756A300E4B21D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = CE9C42D42E1756A100E4B21D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = CE9C42DB2E1756A100E4B21D;
+			remoteInfo = AceClass;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		CE9C42DC2E1756A100E4B21D /* AceClass.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AceClass.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		CE9C42ED2E1756A300E4B21D /* AceClassTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AceClassTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		CE9C42F72E1756A300E4B21D /* AceClassUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AceClassUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		CE9C42FF2E1756A300E4B21D /* Exceptions for "AceClass" folder in "AceClass" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = CE9C42DB2E1756A100E4B21D /* AceClass */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		CE9C42DE2E1756A100E4B21D /* AceClass */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				CE9C42FF2E1756A300E4B21D /* Exceptions for "AceClass" folder in "AceClass" target */,
+			);
+			path = AceClass;
+			sourceTree = "<group>";
+		};
+		CE9C42F02E1756A300E4B21D /* AceClassTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = AceClassTests;
+			sourceTree = "<group>";
+		};
+		CE9C42FA2E1756A300E4B21D /* AceClassUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = AceClassUITests;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		CE9C42D92E1756A100E4B21D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CE9C42EA2E1756A300E4B21D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CE9C42F42E1756A300E4B21D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		CE9C42D32E1756A100E4B21D = {
+			isa = PBXGroup;
+			children = (
+				CE9C42DE2E1756A100E4B21D /* AceClass */,
+				CE9C42F02E1756A300E4B21D /* AceClassTests */,
+				CE9C42FA2E1756A300E4B21D /* AceClassUITests */,
+				CE9C42DD2E1756A100E4B21D /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		CE9C42DD2E1756A100E4B21D /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				CE9C42DC2E1756A100E4B21D /* AceClass.app */,
+				CE9C42ED2E1756A300E4B21D /* AceClassTests.xctest */,
+				CE9C42F72E1756A300E4B21D /* AceClassUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		CE9C42DB2E1756A100E4B21D /* AceClass */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CE9C43002E1756A300E4B21D /* Build configuration list for PBXNativeTarget "AceClass" */;
+			buildPhases = (
+				CE9C42D82E1756A100E4B21D /* Sources */,
+				CE9C42D92E1756A100E4B21D /* Frameworks */,
+				CE9C42DA2E1756A100E4B21D /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				CE9C42DE2E1756A100E4B21D /* AceClass */,
+			);
+			name = AceClass;
+			packageProductDependencies = (
+			);
+			productName = AceClass;
+			productReference = CE9C42DC2E1756A100E4B21D /* AceClass.app */;
+			productType = "com.apple.product-type.application";
+		};
+		CE9C42EC2E1756A300E4B21D /* AceClassTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CE9C43052E1756A300E4B21D /* Build configuration list for PBXNativeTarget "AceClassTests" */;
+			buildPhases = (
+				CE9C42E92E1756A300E4B21D /* Sources */,
+				CE9C42EA2E1756A300E4B21D /* Frameworks */,
+				CE9C42EB2E1756A300E4B21D /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				CE9C42EF2E1756A300E4B21D /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				CE9C42F02E1756A300E4B21D /* AceClassTests */,
+			);
+			name = AceClassTests;
+			packageProductDependencies = (
+			);
+			productName = AceClassTests;
+			productReference = CE9C42ED2E1756A300E4B21D /* AceClassTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		CE9C42F62E1756A300E4B21D /* AceClassUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CE9C43082E1756A300E4B21D /* Build configuration list for PBXNativeTarget "AceClassUITests" */;
+			buildPhases = (
+				CE9C42F32E1756A300E4B21D /* Sources */,
+				CE9C42F42E1756A300E4B21D /* Frameworks */,
+				CE9C42F52E1756A300E4B21D /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				CE9C42F92E1756A300E4B21D /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				CE9C42FA2E1756A300E4B21D /* AceClassUITests */,
+			);
+			name = AceClassUITests;
+			packageProductDependencies = (
+			);
+			productName = AceClassUITests;
+			productReference = CE9C42F72E1756A300E4B21D /* AceClassUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		CE9C42D42E1756A100E4B21D /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1630;
+				LastUpgradeCheck = 1630;
+				TargetAttributes = {
+					CE9C42DB2E1756A100E4B21D = {
+						CreatedOnToolsVersion = 16.3;
+					};
+					CE9C42EC2E1756A300E4B21D = {
+						CreatedOnToolsVersion = 16.3;
+						TestTargetID = CE9C42DB2E1756A100E4B21D;
+					};
+					CE9C42F62E1756A300E4B21D = {
+						CreatedOnToolsVersion = 16.3;
+						TestTargetID = CE9C42DB2E1756A100E4B21D;
+					};
+				};
+			};
+			buildConfigurationList = CE9C42D72E1756A100E4B21D /* Build configuration list for PBXProject "AceClass" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = CE9C42D32E1756A100E4B21D;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = CE9C42DD2E1756A100E4B21D /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				CE9C42DB2E1756A100E4B21D /* AceClass */,
+				CE9C42EC2E1756A300E4B21D /* AceClassTests */,
+				CE9C42F62E1756A300E4B21D /* AceClassUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		CE9C42DA2E1756A100E4B21D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CE9C42EB2E1756A300E4B21D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CE9C42F52E1756A300E4B21D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		CE9C42D82E1756A100E4B21D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CE9C42E92E1756A300E4B21D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CE9C42F32E1756A300E4B21D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		CE9C42EF2E1756A300E4B21D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = CE9C42DB2E1756A100E4B21D /* AceClass */;
+			targetProxy = CE9C42EE2E1756A300E4B21D /* PBXContainerItemProxy */;
+		};
+		CE9C42F92E1756A300E4B21D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = CE9C42DB2E1756A100E4B21D /* AceClass */;
+			targetProxy = CE9C42F82E1756A300E4B21D /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		CE9C43012E1756A300E4B21D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = AceClass/AceClass.entitlements;
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = AceClass/Info.plist;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = ChenChiJiun.AceClass;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		CE9C43022E1756A300E4B21D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = AceClass/AceClass.entitlements;
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = AceClass/Info.plist;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = ChenChiJiun.AceClass;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		CE9C43032E1756A300E4B21D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.4;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		CE9C43042E1756A300E4B21D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.4;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		CE9C43062E1756A300E4B21D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.4;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = ChenChiJiun.AceClassTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/AceClass.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/AceClass";
+			};
+			name = Debug;
+		};
+		CE9C43072E1756A300E4B21D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.4;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = ChenChiJiun.AceClassTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/AceClass.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/AceClass";
+			};
+			name = Release;
+		};
+		CE9C43092E1756A300E4B21D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = ChenChiJiun.AceClassUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = AceClass;
+			};
+			name = Debug;
+		};
+		CE9C430A2E1756A300E4B21D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = ChenChiJiun.AceClassUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = AceClass;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		CE9C42D72E1756A100E4B21D /* Build configuration list for PBXProject "AceClass" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CE9C43032E1756A300E4B21D /* Debug */,
+				CE9C43042E1756A300E4B21D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		CE9C43002E1756A300E4B21D /* Build configuration list for PBXNativeTarget "AceClass" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CE9C43012E1756A300E4B21D /* Debug */,
+				CE9C43022E1756A300E4B21D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		CE9C43052E1756A300E4B21D /* Build configuration list for PBXNativeTarget "AceClassTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CE9C43062E1756A300E4B21D /* Debug */,
+				CE9C43072E1756A300E4B21D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		CE9C43082E1756A300E4B21D /* Build configuration list for PBXNativeTarget "AceClassUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CE9C43092E1756A300E4B21D /* Debug */,
+				CE9C430A2E1756A300E4B21D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = CE9C42D42E1756A100E4B21D /* Project object */;
+}
