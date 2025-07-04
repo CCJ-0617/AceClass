@@ -28,10 +28,10 @@ struct AceClassApp: App {
         }
     }
 
-    init() {
-        UserDefaults.standard.removeObject(forKey: bookmarkKey)
-        print("已清除舊的 bookmarkKey，請重新選擇資料夾。")
-    }
+    // init() {
+    //     UserDefaults.standard.removeObject(forKey: bookmarkKey)
+    //     print("已清除舊的 bookmarkKey，請重新選擇資料夾。")
+    // }
     
     // 2. 新增切換全螢幕的輔助函式
     private func toggleFullScreen() {

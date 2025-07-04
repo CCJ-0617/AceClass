@@ -86,7 +86,7 @@ struct Course: Identifiable, Hashable {
     var videos: [VideoItem]
     
     var jsonFileURL: URL {
-        folderURL.appendingPathComponent("Book1.json")
+        folderURL.appendingPathComponent("videos.json")
     }
     
     static func == (lhs: Course, rhs: Course) -> Bool {
