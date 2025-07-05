@@ -10,16 +10,41 @@ import AVKit
 
 // 1. 用於右側欄位的標準影片播放器
 struct VideoPlayerView: View {
-    let player: AVPlayer
-    let onToggleFullScreen: () -> Void
+    @ObservedObject var appState: AppState
+    @Binding var isFullScreen: Bool
+    
+    // 將 player 設為此 View 的狀態，由 appState 的 videoURL 驅動
+    @State private var player: AVPlayer?
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
-            VideoPlayer(player: player)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+            if let player = player {
+                VideoPlayer(player: player)
+                    .onAppear {
+                        player.play()
+                    }
+                    .onDisappear {
+                        // 當 View 消失時（例如切換課程），暫停播放
+                        player.pause()
+                    }
+            } else {
+                // 沒有選擇影片時的預留位置
+                VStack {
+                    Text("請選擇一部影片")
+                        .foregroundColor(.white)
+                        .padding()
+                    Spacer()
+                }
+                .background(Color.black)
+                .edgesIgnoringSafeArea(.all)
+            }
 
             // 全螢幕切換按鈕
-            Button(action: onToggleFullScreen) {
+            Button(action: {
+                withAnimation {
+                    isFullScreen.toggle()
+                }
+            }) {
                 Image(systemName: "arrow.up.left.and.arrow.down.right")
                     .font(.title3.weight(.bold))
                     .foregroundColor(.white)
@@ -33,6 +58,24 @@ struct VideoPlayerView: View {
             }
             .buttonStyle(.plain)
             .padding()
+        }
+        .onChange(of: appState.currentVideoURL) { _, newURL in
+            if let url = newURL {
+                // 當 AppState 中的 URL 變更時，建立新的播放器
+                player = AVPlayer(url: url)
+                player?.play()
+            } else {
+                // 如果 URL 為 nil，則清空播放器
+                player = nil
+            }
+        }
+        .onAppear {
+            // 當 View 首次出現時，根據當前的 URL 初始化播放器
+            if let url = appState.currentVideoURL {
+                player = AVPlayer(url: url)
+            } else {
+                player = nil
+            }
         }
     }
 }
@@ -66,9 +109,5 @@ struct FullScreenVideoPlayerView: View {
             .buttonStyle(.plain)
             .padding()
         }
-        .background(Color.black)
-        .edgesIgnoringSafeArea(.all)
-        // 增加過渡動畫
-        .transition(.opacity.animation(.easeInOut))
     }
 }
