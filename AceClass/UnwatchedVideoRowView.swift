@@ -11,30 +11,48 @@ import SwiftUI
 struct UnwatchedVideoRowView: View {
     let video: VideoItem
     let playAction: () -> Void
-
+    
+    private var formattedDate: String {
+        guard let date = video.date else { return "" }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: date)
+    }
+    
     var body: some View {
-        // 1. 將整列視圖改為按鈕，提升互動性
-        Button(action: playAction) {
-            HStack {
-                // 2. 增加播放圖示，更直觀
-                Image(systemName: "play.circle")
-                    .font(.title3)
+        HStack(alignment: .center, spacing: 10) {
+            Image(systemName: "play.circle.fill")
+                .font(.title2)
+                .foregroundColor(.blue)
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text(video.displayName.isEmpty ? video.fileName : video.displayName)
+                    .lineLimit(1)
+                    .font(.headline)
+                
+                Text(video.note.isEmpty ? "無註解" : video.note)
+                    .font(.subheadline)
                     .foregroundColor(.secondary)
-                
-                // 3. 顯示註解，並在滑鼠懸停時顯示原始檔名
-                Text(video.note)
-                    .help(video.fileName)
-                
-                Spacer()
-                
-                // 4. 增加指示符號
-                Image(systemName: "chevron.right")
+                    .lineLimit(1)
+            }
+            
+            Spacer()
+            
+            if !formattedDate.isEmpty {
+                Text(formattedDate)
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
-            .padding(.vertical, 8)
-            .contentShape(Rectangle()) // 確保整個 HStack 區域都能響應點擊
         }
-        .buttonStyle(.plain) // 使用 .plain 風格以避免預設的按鈕外觀
+        .padding(10)
+        .background(Color.secondary.opacity(0.1))
+        .cornerRadius(8)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            // 使用異步調用來避免在視圖更新期間修改狀態
+            DispatchQueue.main.async {
+                playAction()
+            }
+        }
     }
 }

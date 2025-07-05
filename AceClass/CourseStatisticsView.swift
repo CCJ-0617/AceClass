@@ -11,9 +11,17 @@ import SwiftUI
 struct CourseStats {
     let totalVideos: Int
     let watchedVideos: Int
-    var unwatchedVideos: Int { totalVideos - watchedVideos }
-    var progress: Double {
-        totalVideos > 0 ? Double(watchedVideos) / Double(totalVideos) : 0
+    
+    var percentageWatched: Double {
+        totalVideos > 0 ? Double(watchedVideos) / Double(totalVideos) : 0.0
+    }
+    
+    var formattedPercentage: String {
+        String(format: "%.1f%%", percentageWatched * 100)
+    }
+    
+    var unwatchedCount: Int {
+        totalVideos - watchedVideos
     }
 }
 
@@ -41,7 +49,7 @@ struct StatisticsRowsView: View {
             Label("未觀看", systemImage: "circle")
                 .foregroundColor(.orange)
             Spacer()
-            Text("\(stats.unwatchedVideos)")
+            Text("\(stats.unwatchedCount)")
         }
         .font(.title2)
     }
@@ -99,60 +107,105 @@ struct CourseStatisticsView: View {
     let playUnwatchedVideoAction: (VideoItem) -> Void
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                // 標題
-                Text(courseName)
-                    .font(.largeTitle)
-                    .fontWeight(.bold)
-                    .padding(.top)
+        VStack(alignment: .leading, spacing: 20) {
+            // 標題
+            Text(courseName)
+                .font(.largeTitle)
+                .bold()
+                .padding(.bottom, 5)
 
-                // 環圈進度圖
-                ProgressRingView(stats: stats)
+            // 進度環與統計數據
+            HStack(spacing: 50) {
+                ZStack {
+                    Circle()
+                        .stroke(lineWidth: 20)
+                        .opacity(0.3)
+                        .foregroundColor(.blue)
 
-                // 數據統計列
-                StatisticsRowsView(stats: stats)
+                    Circle()
+                        .trim(from: 0.0, to: stats.percentageWatched)
+                        .stroke(style: StrokeStyle(lineWidth: 20, lineCap: .round, lineJoin: .round))
+                        .foregroundColor(.blue)
+                        .rotationEffect(Angle(degrees: -90))
+                        .animation(.linear, value: stats.percentageWatched)
 
-                // 待觀看列表
-                UnwatchedVideosListView(
-                    unwatchedVideos: unwatchedVideos,
-                    playAction: playUnwatchedVideoAction
-                )
+                    VStack {
+                        Text(stats.formattedPercentage)
+                            .font(.title)
+                            .bold()
+                        Text("完成")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .frame(width: 150, height: 150)
+
+                VStack(alignment: .leading, spacing: 15) {
+                    StatRow(label: "總影片數", value: "\(stats.totalVideos)")
+                    StatRow(label: "已觀看", value: "\(stats.watchedVideos)")
+                    StatRow(label: "未觀看", value: "\(stats.unwatchedCount)")
+                }
             }
-            .padding(.horizontal, 30)
-            .padding(.vertical)
+            .padding(.bottom, 20)
+
+            // 未觀看影片列表
+            VStack(alignment: .leading, spacing: 10) {
+                Text("未觀看的影片")
+                    .font(.title2)
+                    .bold()
+
+                if unwatchedVideos.isEmpty {
+                    Text("恭喜！您已觀看所有影片。")
+                        .foregroundColor(.secondary)
+                        .padding()
+                } else {
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 8) {
+                            ForEach(unwatchedVideos) { video in
+                                UnwatchedVideoRowView(video: video) {
+                                    // 使用異步調用來避免在視圖更新期間修改狀態
+                                    DispatchQueue.main.async {
+                                        playUnwatchedVideoAction(video)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    .frame(maxHeight: 300)
+                }
+            }
+
+            Spacer()
+        }
+        .padding(30)
+    }
+}
+
+struct StatRow: View {
+    let label: String
+    let value: String
+
+    var body: some View {
+        HStack {
+            Text(label)
+                .foregroundColor(.secondary)
+                .frame(width: 70, alignment: .leading)
+            Text(value)
+                .font(.title3)
+                .bold()
         }
     }
 }
 
-// 4. 新增：環圈進度圖 View
-struct ProgressRingView: View {
-    let stats: CourseStats
-
-    var body: some View {
-        ZStack {
-            Circle()
-                .stroke(lineWidth: 20.0)
-                .opacity(0.1)
-                .foregroundColor(.blue)
-
-            Circle()
-                .trim(from: 0.0, to: CGFloat(min(stats.progress, 1.0)))
-                .stroke(style: StrokeStyle(lineWidth: 20.0, lineCap: .round, lineJoin: .round))
-                .foregroundColor(.blue)
-                .rotationEffect(Angle(degrees: 270.0))
-                .animation(.linear, value: stats.progress)
-
-            VStack {
-                Text(String(format: "%.1f%%", stats.progress * 100))
-                    .font(.largeTitle)
-                    .bold()
-                Text("完成度")
-                    .font(.headline)
-                    .foregroundColor(.secondary)
-            }
-        }
-        .frame(width: 200, height: 200)
-        .padding()
-    }
+#Preview {
+    CourseStatisticsView(
+        stats: CourseStats(totalVideos: 10, watchedVideos: 4),
+        courseName: "測試課程",
+        unwatchedVideos: [
+            VideoItem(fileName: "範例影片1.mp4", note: "未觀看的影片1"),
+            VideoItem(fileName: "範例影片2.mp4", note: "未觀看的影片2")
+        ],
+        playUnwatchedVideoAction: { _ in }
+    )
+    .frame(width: 600, height: 500)
 }

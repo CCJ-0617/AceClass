@@ -28,7 +28,6 @@ struct ContentView: View {
             .fileImporter(isPresented: $showFolderPicker, allowedContentTypes: [.folder], allowsMultipleSelection: false) { result in
                 appState.handleFolderSelection(result)
             }
-            .alert("需要完整磁碟取用權限", isPresented: $appState.showFullDiskAccessAlert, actions: fullDiskAccessAlertButtons, message: fullDiskAccessAlertMessage)
             
             // 依賴 isFullScreen 和 currentVideoURL 來決定是否顯示全螢幕播放器
             if appState.isVideoPlayerFullScreen, let url = appState.currentVideoURL {
@@ -196,17 +195,7 @@ struct ContentView: View {
         }
     }
     
-    @ViewBuilder
-    private func fullDiskAccessAlertButtons() -> some View {
-        Button("前往設定") {
-            appState.openPrivacySettings()
-        }
-        Button("稍後再說", role: .cancel) { }
-    }
-    
-    private func fullDiskAccessAlertMessage() -> some View {
-        Text("為了讓您能選擇任意資料夾作為課程來源，本應用程式需要「完整磁碟取用權限」。\n\n請至「系統設定 > 隱私權與安全性 > 完整磁碟取用權限」中，將 AceClass 加入並啟用。")
-    }
+    // 已移除全磁碟存取權限相關程式碼
 
     // MARK: - Helper Methods
     

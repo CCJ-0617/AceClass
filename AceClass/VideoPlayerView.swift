@@ -60,21 +60,26 @@ struct VideoPlayerView: View {
             .padding()
         }
         .onChange(of: appState.currentVideoURL) { _, newURL in
-            if let url = newURL {
-                // 當 AppState 中的 URL 變更時，建立新的播放器
-                player = AVPlayer(url: url)
-                player?.play()
-            } else {
-                // 如果 URL 為 nil，則清空播放器
-                player = nil
+            // 使用異步調用確保不會在視圖更新期間修改狀態
+            DispatchQueue.main.async {
+                if let url = newURL {
+                    // 當 AppState 中的 URL 變更時，建立新的播放器
+                    self.player = AVPlayer(url: url)
+                    self.player?.play()
+                } else {
+                    // 如果 URL 為 nil，則清空播放器
+                    self.player = nil
+                }
             }
         }
         .onAppear {
             // 當 View 首次出現時，根據當前的 URL 初始化播放器
-            if let url = appState.currentVideoURL {
-                player = AVPlayer(url: url)
-            } else {
-                player = nil
+            DispatchQueue.main.async {
+                if let url = appState.currentVideoURL {
+                    self.player = AVPlayer(url: url)
+                } else {
+                    self.player = nil
+                }
             }
         }
     }

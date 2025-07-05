@@ -23,7 +23,6 @@ class AppState: ObservableObject {
     @Published var currentVideoURL: URL? // Publish only the URL
     @Published var isVideoPlayerFullScreen = false
     @Published var sourceFolderURL: URL?
-    @Published var showFullDiskAccessAlert = false
 
     // MARK: - Private Properties
     private let bookmarkKey = "selectedFolderBookmark"
@@ -43,13 +42,6 @@ class AppState: ObservableObject {
     // MARK: - Initializer & Deinitializer
     init() {
         loadBookmark()
-        
-        // 如果沒有選擇資料夾，在啟動一段時間後檢查完整磁碟權限
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            if self.sourceFolderURL == nil && !self.hasFullDiskAccess() {
-                self.showFullDiskAccessAlert = true
-            }
-        }
     }
 
     deinit {
@@ -95,7 +87,6 @@ class AppState: ObservableObject {
             print("CRITICAL: 無法播放影片，因為沒有主資料夾的安全作用域存取權限")
             DispatchQueue.main.async {
                 self.currentVideoURL = nil
-                self.showFullDiskAccessAlert = true
             }
             return
         }
@@ -141,7 +132,6 @@ class AppState: ObservableObject {
                     DispatchQueue.main.async {
                         self.currentVideoURL = nil
                         self.currentVideo = nil
-                        self.showFullDiskAccessAlert = true
                     }
                     return
                 }
@@ -199,12 +189,16 @@ class AppState: ObservableObject {
             // 清理舊的權限
             stopAccessingResources()
 
-            // 使用安全作用域書籤來持久化權限，包含寫入權限
+            // 使用安全作用域書籤來持久化權限，請求讀寫權限
             do {
-                // 注意：不使用 .securityScopeAllowOnlyReadAccess 選項，以確保我們有寫入權限
-                let bookmarkData = try folder.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil)
+                // 不使用 .securityScopeAllowOnlyReadAccess 選項，以獲取完整的讀寫權限
+                let bookmarkData = try folder.bookmarkData(
+                    options: .withSecurityScope, 
+                    includingResourceValuesForKeys: nil, 
+                    relativeTo: nil
+                )
                 UserDefaults.standard.set(bookmarkData, forKey: bookmarkKey)
-                print("已儲存資料夾書籤資料。")
+                print("已儲存資料夾書籤資料 (讀寫權限)。")
                 
                 // 直接使用新資料夾重新載入所有內容
                 if folder.startAccessingSecurityScopedResource() {
@@ -219,11 +213,9 @@ class AppState: ObservableObject {
                     self.loadCourses(from: folder)
                 } else {
                     print("CRITICAL: 無法為新選擇的資料夾啟動安全作用域存取。")
-                    self.showFullDiskAccessAlert = true
                 }
             } catch {
                 print("儲存資料夾書籤失敗: \(error.localizedDescription)")
-                self.showFullDiskAccessAlert = true
             }
             
         case .failure(let error):
@@ -259,9 +251,14 @@ class AppState: ObservableObject {
                 
                 // 重新儲存最新的書籤資料，避免因為系統變更而失效
                 do {
-                    let freshBookmarkData = try url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil)
+                    // 使用讀寫權限
+                    let freshBookmarkData = try url.bookmarkData(
+                        options: .withSecurityScope, 
+                        includingResourceValuesForKeys: nil, 
+                        relativeTo: nil
+                    )
                     UserDefaults.standard.set(freshBookmarkData, forKey: bookmarkKey)
-                    print("已更新書籤資料")
+                    print("已更新書籤資料 (讀寫權限)")
                 } catch {
                     print("警告：無法更新書籤資料：\(error.localizedDescription)")
                 }
@@ -270,7 +267,6 @@ class AppState: ObservableObject {
                 self.loadCourses(from: url)
             } else {
                 print("無法透過書籤取得安全作用域存取權限。")
-                self.showFullDiskAccessAlert = true
             }
         } catch {
             print("解析書籤失敗: \(error.localizedDescription)")
@@ -307,9 +303,6 @@ class AppState: ObservableObject {
                 }
             } catch {
                 print("讀取課程資料夾失敗: \(error.localizedDescription)")
-                DispatchQueue.main.async {
-                    self.showFullDiskAccessAlert = true
-                }
             }
         }
     }
@@ -319,14 +312,18 @@ class AppState: ObservableObject {
 
         // 將檔案讀取和處理操作移至後台線程
         DispatchQueue.global(qos: .background).async {
-            // 此函數假定 course.folderURL 的存取權限是繼承自 securityScopedURL
-            let jsonURL = course.folderURL.appendingPathComponent("videos.json")
-            var loadedVideos: [VideoItem] = []
+            // 先從本地元數據存儲中讀取
+            var loadedVideos = LocalMetadataStorage.loadVideos(for: course.id)
             
-            // 從 security-scoped URL 讀取是安全的
-            if let data = try? Data(contentsOf: jsonURL),
-               let decodedVideos = try? JSONDecoder().decode([VideoItem].self, from: data) {
-                loadedVideos = decodedVideos
+            // 如果本地無數據，嘗試從外部讀取（向後兼容）
+            if loadedVideos.isEmpty {
+                let jsonURL = course.folderURL.appendingPathComponent("videos.json")
+                if let data = try? Data(contentsOf: jsonURL),
+                   let decodedVideos = try? JSONDecoder().decode([VideoItem].self, from: data) {
+                    loadedVideos = decodedVideos
+                    // 順便保存到本地元數據存儲中
+                    LocalMetadataStorage.saveVideos(decodedVideos, for: course.id)
+                }
             }
             
             do {
@@ -336,7 +333,7 @@ class AppState: ObservableObject {
                 var updatedVideos: [VideoItem] = []
                 let loadedFileNames = Set(loadedVideos.map { $0.fileName })
 
-                // 加入 JSON 中已有的影片
+                // 加入已有的影片
                 updatedVideos.append(contentsOf: loadedVideos)
 
                 // 加入資料夾中新增的影片
@@ -346,7 +343,7 @@ class AppState: ObservableObject {
                     }
                 }
                 
-                // 移除在 JSON 中但已從資料夾刪除的影片
+                // 移除在JSON中但已從資料夾刪除的影片
                 let fileNamesOnDisk = Set(videoFiles.map { $0.lastPathComponent })
                 updatedVideos.removeAll { !fileNamesOnDisk.contains($0.fileName) }
 
@@ -362,13 +359,11 @@ class AppState: ObservableObject {
                 DispatchQueue.main.async {
                     self.courses[courseIndex].videos = updatedVideos
                     print("為課程 \(course.folderURL.lastPathComponent) 載入/更新了 \(updatedVideos.count) 個影片。")
-                    self.saveVideos(for: course.id) // saveVideos 也應在後台執行
+                    // 保存更新後的視頻數據
+                    self.saveVideos(for: course.id)
                 }
             } catch {
                 print("讀取影片檔案失敗: \(error.localizedDescription)")
-                DispatchQueue.main.async {
-                    self.showFullDiskAccessAlert = true
-                }
             }
         }
     }
@@ -376,72 +371,16 @@ class AppState: ObservableObject {
     func saveVideos(for courseID: UUID) {
         guard let course = courses.first(where: { $0.id == courseID }) else { return }
         
-        // 捕獲所需數據，然後切換到後台線程
+        // 使用本地元數據存儲，同時支持可選的外部驅動器寫入
         let videosToSave = course.videos
-        let jsonURL = course.folderURL.appendingPathComponent("videos.json")
-        let coursePath = course.folderURL.path
-
-        DispatchQueue.global(qos: .userInitiated).async { // 提高優先級以確保及時保存
-            // 確認我們有安全作用域存取權限 - 應該從主資料夾繼承
-            guard let secURL = self.securityScopedURL, secURL.startAccessingSecurityScopedResource() else {
-                print("CRITICAL: 無法獲取安全作用域存取權限，無法儲存影片資料")
-                return
-            }
+        
+        DispatchQueue.global(qos: .userInitiated).async {
+            // 將元數據保存到本地應用支持目錄
+            LocalMetadataStorage.saveVideos(videosToSave, for: courseID)
             
-            defer {
-                // 確保在完成後釋放權限，但不釋放主資料夾的權限
-                if self.securityScopedURL != nil {
-                    print("完成影片資料儲存操作，保持主資料夾存取權限")
-                }
-            }
-            
-            do {
-                // 嘗試創建父目錄，防止檔案寫入失敗
-                if !FileManager.default.fileExists(atPath: coursePath) {
-                    try FileManager.default.createDirectory(atPath: coursePath, withIntermediateDirectories: true, attributes: nil)
-                }
-                
-                let encoder = JSONEncoder()
-                encoder.outputFormatting = .prettyPrinted
-                let data = try encoder.encode(videosToSave)
-                
-                // 使用 atomic 選項確保寫入的安全性
-                try data.write(to: jsonURL, options: .atomic)
-                print("成功將影片資料儲存到 \(jsonURL.path)")
-            } catch {
-                print("儲存影片資料失敗: \(error.localizedDescription)")
-                
-                // 檢查詳細錯誤原因
-                if let nsError = error as NSError? {
-                    print("錯誤代碼: \(nsError.code), 域: \(nsError.domain)")
-                    print("詳細描述: \(nsError.localizedDescription)")
-                    if nsError.code == NSFileWriteNoPermissionError {
-                        DispatchQueue.main.async {
-                            self.showFullDiskAccessAlert = true
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // MARK: - Full Disk Access Helpers
-    
-    func hasFullDiskAccess() -> Bool {
-        let testPath = ("~/Library/Application Support" as NSString).expandingTildeInPath
-        do {
-            _ = try FileManager.default.contentsOfDirectory(atPath: testPath)
-            print("完整磁碟取用權限：已取得")
-            return true
-        } catch {
-            print("完整磁碟取用權限檢查失敗: \(error.localizedDescription)")
-            return false
-        }
-    }
-    
-    func openPrivacySettings() {
-        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_FullDiskAccess") {
-            NSWorkspace.shared.open(url)
+            // 嘗試將元數據複製到外部驅動器（根據設置決定是否嘗試，預設為開啟）
+            // LocalMetadataStorage.shouldAttemptWriteToExternalDrives 控制是否執行此操作
+            LocalMetadataStorage.tryCopyMetadataToExternalLocation(for: courseID, folderURL: course.folderURL)
         }
     }
 }
