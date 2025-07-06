@@ -15,72 +15,239 @@ AceClass 是一個為 macOS 設計的 SwiftUI 應用程式，旨在幫助使用�
 本專案採用了類似 MVVM (Model-View-ViewModel) 的架構，利用 SwiftUI 的特性實現：
 
 -   **Model**: 由 `Models.swift` 中的 `Course` 和 `VideoItem` 結構體定義。它們是純粹的資料結構，負責表示課程和影片的狀態，並包含編碼/解碼邏輯以進行 JSON 持久化。
--   **View**: 所有的 `*.swift` 檔案（除了 `AceClassApp.swift` 和 `Models.swift`）都定義了 UI 的一部分。遵循 SwiftUI 的組合式原則，`ContentView.swift` 作為主容器，將 `CourseRowView`, `VideoRowView`, `CourseStatisticsView` 等小型、可重複使用的視圖組合在一起。
--   **ViewModel**: `ContentView.swift` 扮演了主要的 ViewModel 角色。它持有並管理所有應用程式的狀態（如 `selectedCourseID`, `player`），並包含所有的業務邏輯（如載入課程、儲存影片資料、處理權限等）。`CourseManager` 則是一個專門用來發布課程列表變更的 `ObservableObject`。
+-   **View**: 所有的 UI 視圖檔案：
+    - `ContentView.swift`: 主視圖容器，採用 `NavigationSplitView` 實現三欄布局
+    - `CourseRowView.swift`: 側邊欄課程列表項
+    - `VideoRowView.swift`: 中間影片列表項，包含編輯功能
+    - `UnwatchedVideoRowView.swift`: 統計視圖中的未觀看影片項
+    - `CourseStatisticsView.swift`: 課程統計面板
+    - `VideoPlayerView.swift`: 影片播放器（支援全螢幕）
+-   **ViewModel/State Management**: `AppState.swift` 作為主要的狀態管理器，使用 `ObservableObject` 協議管理應用程式全域狀態。
 
-### 2.2. 視圖拆分
+### 2.2. 狀態管理架構
 
-為了提高可維護性，UI 被拆分成多個獨立的檔案：
+```swift
+class AppState: ObservableObject {
+    @Published var courses: [Course] = []
+    @Published var selectedCourseID: UUID?
+    @Published var currentVideo: VideoItem?
+    @Published var currentVideoURL: URL?
+    @Published var isVideoPlayerFullScreen = false
+    @Published var sourceFolderURL: URL?
+    
+    private var securityScopedURL: URL?
+    private var currentlyAccessedVideoURL: URL?
+}
+```
 
--   `ContentView.swift`: 主視圖，作為所有子視圖的協調者和狀態管理器。
--   `CourseRowView.swift`: 側邊欄中顯示單一課程的列。
--   `VideoRowView.swift`: 中間列表中顯示單一影片的列，包含編輯和操作按鈕。
--   `UnwatchedVideoRowView.swift`: 在統計視圖中顯示未觀看影片的簡化列。
--   `CourseStatisticsView.swift`: 當未播放任何影片時，在右側面板顯示課程的統計數據。
--   `VideoPlayerView.swift`: 包含標準模式和全螢幕模式的影片播放器元件。
+### 2.3. 並發和線程安全
 
-### 2.3. 狀態管理
-
--   **`@StateObject`**: 在 `ContentView` 中使用 `CourseManager`，確保其生命週期與視圖綁定。
--   **`@State`**: 用於管理 `ContentView` 內部簡單的、本地的 UI 狀態（如 `selectedCourseID`, `isVideoPlayerFullScreen`）。
--   **`@Binding`**: 用於在父視圖（`ContentView`）和子視圖（`VideoRowView`）之間傳遞可變狀態的引用，例如影片的註解或觀看狀態。
--   **`ObservableObject`**: `CourseManager` 遵循此協議，使其能夠在 `@Published` 的 `courses` 屬性變更時通知 SwiftUI 更新相關視圖。
+- **主線程**: 所有 UI 更新使用 `Task { @MainActor in }` 確保在主線程執行
+- **後台線程**: 檔案 I/O 操作在 `DispatchQueue.global(qos: .background)` 執行
+- **狀態更新**: 避免在視圖更新期間修改狀態，使用 `Task.detached` 處理副作用
 
 ---
 
 ## 3. 資料模型與持久化
 
-### 3.1. 資料結構 (`Models.swift`)
+### 3.1. 核心資料結構
 
--   **`Course`**: 代表一個課程，對應一個子資料夾。包含 `id`, `folderURL` 和一個 `videos` 陣列。
--   **`VideoItem`**: 代表一個 `.mp4` 影片檔案。
-    -   `id`: 唯一標識符。
-    -   `fileName`: 影片的原始檔名，作為與檔案系統關聯的關鍵。
-    -   `displayName`: 可由使用者編輯的顯示名稱。
-    -   `note`: 可由使用者編輯的註解，預設為檔名。
-    -   `watched`: 布林值，標記影片是否已觀看。
-    -   `date`: 從檔名中自動解析出的日期，用於排序。
+```swift
+struct VideoItem: Identifiable, Codable {
+    let id: UUID
+    let fileName: String         // 實際檔名
+    var displayName: String      // 顯示名稱
+    var note: String             // 註解
+    var watched: Bool            // 是否已看
+    let date: Date?              // 從檔名解析出的日期
+}
 
-### 3.2. 資料持久化
+struct Course: Identifiable, Hashable {
+    let id = UUID()
+    let folderURL: URL
+    var videos: [VideoItem]
+}
+```
 
--   每個課程資料夾內都會儲存一個 `videos.json` 檔案。
--   這個 JSON 檔案儲存了該課程所有 `VideoItem` 的陣列，包含了使用者修改過的 `displayName`, `note` 和 `watched` 狀態。
--   當應用程式載入一個課程的影片時，它會：
-    1.  讀取 `videos.json` 檔案（如果存在）。
-    2.  掃描資料夾中的所有 `.mp4` 檔案。
-    3.  將掃描結果與從 JSON 讀取的資料進行比對和合併，以確保檔案系統的變動（新增/刪除影片）能被正確反映，同時保留使用者的編輯。
-    4.  任何對影片狀態的修改（如標記為已看、編輯註解）都會觸發 `saveVideos` 函式，將最新的資料寫回 `videos.json`。
+### 3.2. 混合儲存策略
+
+應用程式採用本地優先的混合儲存策略：
+
+#### 本地儲存 (主要)
+```swift
+class LocalMetadataStorage {
+    static let baseDirectory: URL = {
+        // ~/Library/Containers/App/Data/Library/Application Support/AceClass/
+    }()
+    
+    static let coursesDirectory: URL = {
+        // baseDirectory/Courses/
+    }()
+}
+```
+
+#### 外部同步 (輔助)
+- 嘗試在每個課程資料夾建立 `videos.json`
+- 使用 "best effort" 原則，失敗不影響應用功能
+- 可透過 `LocalMetadataStorage.shouldAttemptWriteToExternalDrives` 控制
+
+### 3.3. 日期解析算法
+
+```swift
+static func extractDate(from fileName: String) -> Date? {
+    let pattern = "(?:20)?(\\d{2})(\\d{2})(\\d{2})"
+    // 支援 20250704 和 250704 格式
+    // 自動補充 "20" 前綴處理兩位數年份
+}
+```
 
 ---
 
-## 4. 權限管理 (核心)
+## 4. macOS 沙盒權限管理
 
-macOS 的沙盒機制要求應用程式必須明確獲得使用者授權才能存取檔案系統。本專案採用了**安全作用域書籤 (Security-Scoped Bookmarks)** 來實現持久化授權。
+### 4.1. Entitlements 配置
 
-### 4.1. 運作流程
+```xml
+<key>com.apple.security.app-sandbox</key>
+<true/>
+<key>com.apple.security.files.user-selected.read-write</key>
+<true/>
+<key>com.apple.security.files.bookmarks.app-scope</key>
+<true/>
+<key>com.apple.security.files.bookmarks.document-scope</key>
+<true/>
+```
 
-1.  **首次授權**: 當使用者第一次透過 `fileImporter` 選擇來源資料夾時，應用程式會請求對該資料夾的存取權限。
-2.  **建立書籤**: 一旦獲得授權，應用程式會立即為該資料夾的 URL 建立一個安全作用域書籤，並將其儲存在 `UserDefaults` 中。
-3.  **啟動時恢復權限**: 應用程式每次啟動時，會執行 `loadBookmark()`:
-    -   從 `UserDefaults` 讀取書籤資料。
-    -   使用書籤解析回安全的 URL，並**重新獲取該資料夾的存取權限**。
-4.  **權限的持有與繼承**:
-    -   **關鍵策略**：在 `loadBookmark()` 成功後，應用程式會呼叫 `url.startAccessingSecurityScopedResource()`，並且**在整個應用程式的生命週期內都持有此權限**。
-    -   所有後續對該資料夾內部任何子目錄或檔案的存取（讀取課程、讀寫 `videos.json`、讀取影片進行播放）都會自動**繼承**這個已獲取的權限。
-    -   這避免了在每次操作子目錄時都重複請求權限，從而解決了「無法取得安全作用域存取權限」的核心問題。
-5.  **釋放權限**: 只有在應用程式即將關閉時（在 `ContentView` 的 `onDisappear` 修飾符中），才會呼叫 `stopAccessingSecurityScopedResource()` 來釋放權限。
+### 4.2. 安全作用域書籤流程
 
-### 4.2. 輔助權限檢查
+```swift
+// 1. 使用者選擇資料夾
+func handleFolderSelection(_ result: Result<[URL], Error>) {
+    // 2. 啟動安全作用域存取
+    guard folder.startAccessingSecurityScopedResource() else { return }
+    
+    // 3. 建立持久化書籤
+    let bookmarkData = try folder.bookmarkData(options: .withSecurityScope)
+    UserDefaults.standard.set(bookmarkData, forKey: bookmarkKey)
+    
+    // 4. 保持權限直到應用關閉
+    self.securityScopedURL = folder
+}
 
--   `hasFullDiskAccess()`: 一個輔助函式，透過嘗試讀取一個受保護的系統目錄 (`~/Library/Application Support`) 來推斷應用程式是否擁有「完整磁碟取用權限」。
--   如果書籤載入失敗，或讀取目錄內容時發生錯誤，應用程式會顯示一個提示框，引導使用者前往「系統設定」手動授予權限。這為權限問題提供了一個備用的解決方案。
+// 5. 應用啟動時恢復權限
+func loadBookmark() {
+    let url = try URL(resolvingBookmarkData: bookmarkData, options: .withSecurityScope)
+    guard url.startAccessingSecurityScopedResource() else { return }
+    self.securityScopedURL = url
+}
+```
+
+### 4.3. 權限繼承策略
+
+- **根權限**: 對選擇的根資料夾持有一個安全作用域權限
+- **子資料夾繼承**: 所有子資料夾和檔案操作自動繼承根權限
+- **避免重複請求**: 不在每個檔案操作時重複呼叫 `startAccessingSecurityScopedResource()`
+
+---
+
+## 5. 影片播放架構
+
+### 5.1. AVPlayer 整合
+
+```swift
+// 標準播放
+if let url = appState.currentVideoURL {
+    VideoPlayer(player: AVPlayer(url: url))
+}
+
+// 全螢幕播放
+FullScreenVideoPlayerView(
+    player: AVPlayer(url: url), 
+    onToggleFullScreen: appState.toggleFullScreen
+)
+```
+
+### 5.2. 全螢幕模式
+
+- 使用 `ZStack` 覆蓋實現
+- 快捷鍵支援: `Cmd+Ctrl+F`
+- 狀態管理: `@Published var isVideoPlayerFullScreen`
+
+---
+
+## 6. 錯誤處理與調試
+
+### 6.1. 權限調試工具
+
+```swift
+func debugPermissionStatus() {
+    print("=== 權限狀態調試 ===")
+    // 檢查可讀/可寫權限
+    // 測試目錄存取
+    // 輸出詳細診斷資訊
+}
+```
+
+### 6.2. 常見問題解決
+
+1. **"Publishing changes from within view updates"**
+   - 解決方案: 使用 `Task { @MainActor in }` 而非 `DispatchQueue.main.async`
+
+2. **權限問題**
+   - 確保正確的 entitlements 配置
+   - 檢查安全作用域權限的獲取順序
+
+3. **檔案存取失敗**
+   - 驗證書籤的有效性
+   - 檢查檔案系統權限
+
+---
+
+## 7. 建置與部署
+
+### 7.1. 開發環境需求
+
+- Xcode 14.0+
+- macOS 12.0+ (deployment target)
+- Swift 5.7+
+
+### 7.2. 關鍵建置設定
+
+- **Code Signing**: 需要適當的開發者憑證
+- **Hardened Runtime**: 啟用以符合 notarization 需求
+- **Entitlements**: 確保沙盒權限正確配置
+
+### 7.3. 測試建議
+
+1. **權限測試**: 測試首次授權和書籤恢復
+2. **外部驅動器測試**: 驗證在不同儲存裝置上的行為
+3. **大量檔案測試**: 測試包含大量影片的資料夾
+4. **權限撤銷測試**: 測試使用者撤銷權限後的應用行為
+
+---
+
+## 8. 架構決策記錄
+
+### 8.1. 為什麼選擇混合儲存策略？
+
+- **可靠性**: 本地儲存確保資料不會遺失
+- **可移植性**: 外部同步支援跨裝置使用
+- **彈性**: 即使外部寫入失敗也不影響功能
+
+### 8.2. 為什麼使用單一安全作用域權限？
+
+- **效能**: 避免重複權限請求的開銷
+- **穩定性**: 減少權限相關的錯誤
+- **簡化**: 權限管理邏輯更清晰
+
+### 8.3. 為什麼重構為非文件導向應用？
+
+- **使用模式**: 使用者操作整個資料夾而非單一文件
+- **權限模型**: 更適合安全作用域書籤的使用方式
+- **UI 設計**: 三欄布局更適合課程/影片的層次結構
+
+---
+
+**開發團隊**: 陳麒畯  
+**最後更新**: 2025年7月6日  
+**專案版本**: 1.0
