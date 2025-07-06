@@ -133,7 +133,11 @@ struct ContentView: View {
                                     video: $video,
                                     isPlaying: appState.currentVideo?.id == video.id,
                                     playAction: { appState.selectVideo(video) },
-                                    saveAction: { appState.saveVideos(for: course.id) }
+                                    saveAction: { 
+                                        Task.detached(priority: .background) {
+                                            appState.saveVideos(for: course.id)
+                                        }
+                                    }
                                 )
                             }
                         }

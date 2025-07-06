@@ -96,18 +96,23 @@ class LocalMetadataStorage {
         let externalURL = folderURL.appendingPathComponent("videos.json")
         
         // Only attempt to copy if local file exists
-        guard FileManager.default.fileExists(atPath: localURL.path) else { return }
+        guard FileManager.default.fileExists(atPath: localURL.path) else { 
+            print("本地元數據檔案不存在，跳過複製")
+            return 
+        }
         
+        // Try to copy the file, using existing security scoped access
+        // The parent should have already granted access to the folder
         do {
-            if folderURL.startAccessingSecurityScopedResource() {
-                defer { folderURL.stopAccessingSecurityScopedResource() }
-                
-                // Try to copy the file, ignoring errors (best effort)
-                try? FileManager.default.copyItem(at: localURL, to: externalURL)
+            // Remove existing file if it exists
+            if FileManager.default.fileExists(atPath: externalURL.path) {
+                try FileManager.default.removeItem(at: externalURL)
             }
+            try FileManager.default.copyItem(at: localURL, to: externalURL)
+            print("成功複製元數據到外部位置: \(externalURL.path)")
         } catch {
-            // Silently fail - this is just a best effort operation
-            print("無法複製元數據到外部位置 (非關鍵錯誤): \(error.localizedDescription)")
+            print("複製元數據到外部位置失敗 (非關鍵錯誤): \(error.localizedDescription)")
+            print("這通常是因為權限問題或外部儲存裝置無法寫入")
         }
     }
 }

@@ -9,8 +9,8 @@ class AppState: ObservableObject {
         didSet {
             // Use the implicit oldValue provided by didSet
             if oldValue != selectedCourseID {
-                // Dispatch state changes asynchronously to avoid view update conflicts
-                DispatchQueue.main.async {
+                // Use async dispatch to avoid publishing changes within view updates
+                Task { @MainActor in
                     self.selectVideo(nil) // Clear the previous video selection
                     if let course = self.selectedCourse {
                         self.loadVideos(for: course)
@@ -70,13 +70,13 @@ class AppState: ObservableObject {
             return
         }
         
-        // 將狀態更新分離出來，確保不會在 View 更新期間觸發
-        DispatchQueue.main.async {
+        // 3. 更新當前影片狀態
+        Task { @MainActor in
             self.currentVideo = video
         }
         
         guard let course = selectedCourse, let videoToPlay = video else {
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 self.currentVideoURL = nil
             }
             return
@@ -85,7 +85,7 @@ class AppState: ObservableObject {
         // 確保我們有根文件夾的安全作用域存取權限
         guard securityScopedURL != nil else {
             print("CRITICAL: 無法播放影片，因為沒有主資料夾的安全作用域存取權限")
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 self.currentVideoURL = nil
             }
             return
@@ -98,7 +98,7 @@ class AppState: ObservableObject {
                 
                 guard let videoURL = fileURLs.first(where: { $0.lastPathComponent == videoToPlay.fileName }) else {
                     print("ERROR: 在課程資料夾中找不到對應的影片檔案: \(videoToPlay.fileName)")
-                    DispatchQueue.main.async {
+                    Task { @MainActor in
                         self.currentVideoURL = nil
                         self.currentVideo = nil
                     }
@@ -120,7 +120,7 @@ class AppState: ObservableObject {
                             let newVideoURL = secURL.appendingPathComponent(relativeVideoPath)
                             
                             print("使用替代路徑: \(newVideoURL.path)")
-                            DispatchQueue.main.async {
+                            Task { @MainActor in
                                 self.currentlyAccessedVideoURL = videoURL
                                 self.currentVideoURL = newVideoURL
                                 self.markVideoAsWatched(videoToPlay)
@@ -129,7 +129,7 @@ class AppState: ObservableObject {
                         }
                     }
                     
-                    DispatchQueue.main.async {
+                    Task { @MainActor in
                         self.currentVideoURL = nil
                         self.currentVideo = nil
                     }
@@ -137,7 +137,7 @@ class AppState: ObservableObject {
                 }
                 
                 // 在主線程更新 UI
-                DispatchQueue.main.async {
+                Task { @MainActor in
                     // 儲存此 URL，以便之後可以釋放其存取權，然後發布它
                     self.currentlyAccessedVideoURL = videoURL
                     self.currentVideoURL = videoURL
@@ -147,7 +147,7 @@ class AppState: ObservableObject {
                 }
             } catch {
                 print("ERROR: 無法列舉課程資料夾內容以尋找影片: \(error.localizedDescription)")
-                DispatchQueue.main.async {
+                Task { @MainActor in
                     self.currentVideoURL = nil
                     self.currentVideo = nil
                 }
@@ -156,8 +156,8 @@ class AppState: ObservableObject {
     }
 
     private func markVideoAsWatched(_ video: VideoItem) {
-        // 切換到主線程，確保狀態更新在視圖更新循環之外
-        DispatchQueue.main.async {
+        // 使用 Task 確保狀態更新在視圖更新循環之外
+        Task { @MainActor in
             guard let courseIndex = self.selectedCourseIndex,
                   let videoIndex = self.courses[courseIndex].videos.firstIndex(where: { $0.id == video.id }),
                   !self.courses[courseIndex].videos[videoIndex].watched else {
@@ -167,7 +167,7 @@ class AppState: ObservableObject {
             self.courses[courseIndex].videos[videoIndex].watched = true
             
             // 在狀態更新後異步保存，避免在視圖更新期間執行 IO
-            DispatchQueue.global(qos: .background).async {
+            Task.detached(priority: .background) {
                 self.saveVideos(for: self.courses[courseIndex].id)
             }
         }
@@ -189,8 +189,25 @@ class AppState: ObservableObject {
             // 清理舊的權限
             stopAccessingResources()
 
+            // 首先啟動安全作用域存取以獲得權限
+            guard folder.startAccessingSecurityScopedResource() else {
+                print("ERROR: 無法啟動新選擇資料夾的安全作用域存取")
+                return
+            }
+            
             // 使用安全作用域書籤來持久化權限，請求讀寫權限
             do {
+                // 首先測試是否可以讀取資料夾內容
+                let testContents = try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.isWritableKey], options: .skipsHiddenFiles)
+                print("成功讀取資料夾內容，包含 \(testContents.count) 個項目")
+                
+                // 檢查資料夾是否可寫
+                var isWritable = false
+                if let resourceValues = try? folder.resourceValues(forKeys: [.isWritableKey]) {
+                    isWritable = resourceValues.isWritable ?? false
+                }
+                print("資料夾寫入權限狀態: \(isWritable ? "可寫" : "唯讀")")
+                
                 // 不使用 .securityScopeAllowOnlyReadAccess 選項，以獲取完整的讀寫權限
                 let bookmarkData = try folder.bookmarkData(
                     options: .withSecurityScope, 
@@ -200,22 +217,28 @@ class AppState: ObservableObject {
                 UserDefaults.standard.set(bookmarkData, forKey: bookmarkKey)
                 print("已儲存資料夾書籤資料 (讀寫權限)。")
                 
-                // 直接使用新資料夾重新載入所有內容
-                if folder.startAccessingSecurityScopedResource() {
-                    print("成功為新選擇的資料夾啟動安全作用域存取: \(folder.path)")
-                    self.securityScopedURL = folder
-                    self.sourceFolderURL = folder
-                    // 確保UI更新在主線程
-                    DispatchQueue.main.async {
-                        self.selectedCourseID = nil
-                        self.currentVideo = nil
-                    }
-                    self.loadCourses(from: folder)
-                } else {
-                    print("CRITICAL: 無法為新選擇的資料夾啟動安全作用域存取。")
+                // 設定狀態並重新載入內容
+                print("成功為新選擇的資料夾啟動安全作用域存取: \(folder.path)")
+                self.securityScopedURL = folder
+                self.sourceFolderURL = folder
+                // 確保UI更新在主線程
+                Task { @MainActor in
+                    self.selectedCourseID = nil
+                    self.currentVideo = nil
                 }
+                self.loadCourses(from: folder)
+                
             } catch {
                 print("儲存資料夾書籤失敗: \(error.localizedDescription)")
+                // 如果書籤儲存失敗，至少嘗試載入內容
+                print("儘管書籤儲存失敗，仍嘗試載入課程內容")
+                self.securityScopedURL = folder
+                self.sourceFolderURL = folder
+                Task { @MainActor in
+                    self.selectedCourseID = nil
+                    self.currentVideo = nil
+                }
+                self.loadCourses(from: folder)
             }
             
         case .failure(let error):
@@ -246,6 +269,13 @@ class AppState: ObservableObject {
             // 嘗試開始存取安全作用域資源
             if url.startAccessingSecurityScopedResource() {
                 print("成功透過書籤取得安全作用域存取權限: \(url.path)")
+                
+                // 檢查權限狀態
+                if let resourceValues = try? url.resourceValues(forKeys: [.isWritableKey]) {
+                    let isWritable = resourceValues.isWritable ?? false
+                    print("資料夾寫入權限狀態: \(isWritable ? "可寫" : "唯讀")")
+                }
+                
                 self.securityScopedURL = url
                 self.sourceFolderURL = url
                 
@@ -285,7 +315,9 @@ class AppState: ObservableObject {
     func loadCourses(from sourceURL: URL) {
         // 將檔案讀取操作移至後台線程
         DispatchQueue.global(qos: .background).async {
-            // 此函數假定 sourceURL 的存取權限已在外部被啟動並持有
+            // 假設調用者已經有了適當的權限
+            // 不需要重複請求 startAccessingSecurityScopedResource
+            
             do {
                 let contents = try FileManager.default.contentsOfDirectory(at: sourceURL, includingPropertiesForKeys: [.isDirectoryKey], options: .skipsHiddenFiles)
                 let courseFolders = contents.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
@@ -293,7 +325,7 @@ class AppState: ObservableObject {
                 let newCourses = courseFolders.map { Course(folderURL: $0, videos: []) }
 
                 // 在主線程更新 UI 相關屬性
-                DispatchQueue.main.async {
+                Task { @MainActor in
                     self.courses = newCourses
                     print("已載入 \(self.courses.count) 個課程。")
                     // 如果沒有選擇任何課程，則自動選擇第一個
@@ -303,6 +335,7 @@ class AppState: ObservableObject {
                 }
             } catch {
                 print("讀取課程資料夾失敗: \(error.localizedDescription)")
+                print("請確認應用程式有存取所選資料夾的權限，或嘗試重新選擇資料夾")
             }
         }
     }
@@ -312,6 +345,8 @@ class AppState: ObservableObject {
 
         // 將檔案讀取和處理操作移至後台線程
         DispatchQueue.global(qos: .background).async {
+            // 假設父級已經有了適當的權限，不需要重複請求
+            
             // 先從本地元數據存儲中讀取
             var loadedVideos = LocalMetadataStorage.loadVideos(for: course.id)
             
@@ -356,14 +391,21 @@ class AppState: ObservableObject {
                 }
                 
                 // 在主線程更新 UI
-                DispatchQueue.main.async {
+                Task { @MainActor in
                     self.courses[courseIndex].videos = updatedVideos
                     print("為課程 \(course.folderURL.lastPathComponent) 載入/更新了 \(updatedVideos.count) 個影片。")
                     // 保存更新後的視頻數據
-                    self.saveVideos(for: course.id)
+                    Task.detached(priority: .background) {
+                        self.saveVideos(for: course.id)
+                    }
                 }
             } catch {
                 print("讀取影片檔案失敗: \(error.localizedDescription)")
+                // 如果讀取失敗，可能是權限問題，提示用戶
+                Task { @MainActor in
+                    // 可以在這裡觸發一個錯誤狀態或提示
+                    print("請確認應用程式有存取所選資料夾的權限")
+                }
             }
         }
     }
@@ -374,13 +416,42 @@ class AppState: ObservableObject {
         // 使用本地元數據存儲，同時支持可選的外部驅動器寫入
         let videosToSave = course.videos
         
-        DispatchQueue.global(qos: .userInitiated).async {
-            // 將元數據保存到本地應用支持目錄
-            LocalMetadataStorage.saveVideos(videosToSave, for: courseID)
-            
-            // 嘗試將元數據複製到外部驅動器（根據設置決定是否嘗試，預設為開啟）
-            // LocalMetadataStorage.shouldAttemptWriteToExternalDrives 控制是否執行此操作
+        // 將元數據保存到本地應用支持目錄
+        LocalMetadataStorage.saveVideos(videosToSave, for: courseID)
+        
+        // 嘗試將元數據複製到外部驅動器（需要在有安全作用域權限的情況下）
+        if let secURL = securityScopedURL, secURL.startAccessingSecurityScopedResource() {
+            defer { secURL.stopAccessingSecurityScopedResource() }
             LocalMetadataStorage.tryCopyMetadataToExternalLocation(for: courseID, folderURL: course.folderURL)
         }
+    }
+    
+    // MARK: - Debug Methods
+    
+    /// Debug method to check current permission status
+    func debugPermissionStatus() {
+        print("=== 權限狀態調試 ===")
+        
+        if let secURL = securityScopedURL {
+            print("安全作用域 URL: \(secURL.path)")
+            
+            // 檢查權限
+            if let resourceValues = try? secURL.resourceValues(forKeys: [.isReadableKey, .isWritableKey]) {
+                print("可讀: \(resourceValues.isReadable ?? false)")
+                print("可寫: \(resourceValues.isWritable ?? false)")
+            }
+            
+            // 嘗試讀取目錄
+            do {
+                let contents = try FileManager.default.contentsOfDirectory(at: secURL, includingPropertiesForKeys: nil, options: .skipsHiddenFiles)
+                print("可以讀取目錄，包含 \(contents.count) 個項目")
+            } catch {
+                print("無法讀取目錄: \(error.localizedDescription)")
+            }
+        } else {
+            print("沒有安全作用域 URL")
+        }
+        
+        print("==================")
     }
 }
