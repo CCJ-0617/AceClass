@@ -29,12 +29,22 @@ struct VideoRowView: View {
                 TextField("輸入註解...", text: $video.note)
                     .font(.headline) // 使用 headline 字體
                     .textFieldStyle(.plain)
-                    .onChange(of: video.note) { _, _ in saveAction() }
+                    .onChange(of: video.note) { _, _ in 
+                        // 使用異步調用來避免在視圖更新期間觸發狀態變更
+                        DispatchQueue.main.async {
+                            saveAction()
+                        }
+                    }
 
                 Spacer()
 
                 // 播放按鈕保持在右上角
-                Button(action: playAction) {
+                Button(action: {
+                    // 使用異步調用來避免在視圖更新期間觸發狀態變更
+                    DispatchQueue.main.async {
+                        playAction()
+                    }
+                }) {
                     Image(systemName: "play.rectangle.fill")
                         .font(.title2)
                 }
@@ -45,7 +55,12 @@ struct VideoRowView: View {
                 TextField("顯示名稱", text: $video.displayName)
                     .font(.body) // 使用 body 字體
                     .textFieldStyle(.plain)
-                    .onChange(of: video.displayName) { _, _ in saveAction() }
+                    .onChange(of: video.displayName) { _, _ in 
+                        // 使用異步調用來避免在視圖更新期間觸發狀態變更
+                        DispatchQueue.main.async {
+                            saveAction() 
+                        }
+                    }
 
                 // 日期跟隨顯示名稱
                 if !formattedDate.isEmpty {
@@ -59,8 +74,11 @@ struct VideoRowView: View {
 
                 // 已看/未看按鈕保持在右下角
                 Button(action: {
-                    video.watched.toggle()
-                    saveAction()
+                    // 使用異步調用來避免在視圖更新期間觸發狀態變更
+                    DispatchQueue.main.async {
+                        video.watched.toggle()
+                        saveAction()
+                    }
                 }) {
                     Image(systemName: video.watched ? "checkmark.circle.fill" : "circle")
                         .font(.title3)
