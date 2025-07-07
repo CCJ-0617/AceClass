@@ -76,7 +76,7 @@ struct ProgressSectionView: View {
 // 3. 將未觀看影片列表抽離成獨立的 View
 struct UnwatchedVideosListView: View {
     let unwatchedVideos: [VideoItem]
-    let playAction: (VideoItem) -> Void
+    let playAction: (VideoItem) async -> Void
 
     var body: some View {
         if !unwatchedVideos.isEmpty {
@@ -89,7 +89,7 @@ struct UnwatchedVideosListView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 8) {
                     ForEach(unwatchedVideos) { video in
-                        UnwatchedVideoRowView(video: video, playAction: { playAction(video) })
+                        UnwatchedVideoRowView(video: video, playAction: { await playAction(video) })
                     }
                 }
             }
@@ -104,7 +104,7 @@ struct CourseStatisticsView: View {
     let stats: CourseStats
     let courseName: String
     let unwatchedVideos: [VideoItem]
-    let playUnwatchedVideoAction: (VideoItem) -> Void
+    let playUnwatchedVideoAction: (VideoItem) async -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -163,10 +163,8 @@ struct CourseStatisticsView: View {
                         LazyVStack(alignment: .leading, spacing: 8) {
                             ForEach(unwatchedVideos) { video in
                                 UnwatchedVideoRowView(video: video) {
-                                    // 使用異步調用來避免在視圖更新期間修改狀態
-                                    DispatchQueue.main.async {
-                                        playUnwatchedVideoAction(video)
-                                    }
+                                    // Use Task to handle the async action
+                                    await playUnwatchedVideoAction(video)
                                 }
                             }
                         }

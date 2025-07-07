@@ -11,8 +11,8 @@ import SwiftUI
 struct VideoRowView: View {
     @Binding var video: VideoItem
     let isPlaying: Bool
-    let playAction: () -> Void
-    let saveAction: () -> Void
+    let playAction: () async -> Void
+    let saveAction: () async -> Void
 
     // 1. 新增日期格式化工具
     private var formattedDate: String {
@@ -30,9 +30,8 @@ struct VideoRowView: View {
                     .font(.headline) // 使用 headline 字體
                     .textFieldStyle(.plain)
                     .onChange(of: video.note) { _, _ in 
-                        // 使用異步調用來避免在視圖更新期間觸發狀態變更
-                        DispatchQueue.main.async {
-                            saveAction()
+                        Task {
+                            await saveAction()
                         }
                     }
 
@@ -40,9 +39,9 @@ struct VideoRowView: View {
 
                 // 播放按鈕保持在右上角
                 Button(action: {
-                    // 使用異步調用來避免在視圖更新期間觸發狀態變更
-                    DispatchQueue.main.async {
-                        playAction()
+                    Task {
+                        // Use Task to handle the async action
+                        await playAction()
                     }
                 }) {
                     Image(systemName: "play.rectangle.fill")
@@ -56,9 +55,8 @@ struct VideoRowView: View {
                     .font(.body) // 使用 body 字體
                     .textFieldStyle(.plain)
                     .onChange(of: video.displayName) { _, _ in 
-                        // 使用異步調用來避免在視圖更新期間觸發狀態變更
-                        DispatchQueue.main.async {
-                            saveAction() 
+                        Task {
+                            await saveAction()
                         }
                     }
 
@@ -74,10 +72,9 @@ struct VideoRowView: View {
 
                 // 已看/未看按鈕保持在右下角
                 Button(action: {
-                    // 使用異步調用來避免在視圖更新期間觸發狀態變更
-                    DispatchQueue.main.async {
+                    Task {
                         video.watched.toggle()
-                        saveAction()
+                        await saveAction()
                     }
                 }) {
                     Image(systemName: video.watched ? "checkmark.circle.fill" : "circle")

@@ -12,6 +12,7 @@ import AVKit
 struct ContentView: View {
     @StateObject private var appState = AppState()
     @State private var showFolderPicker = false
+    @State private var localSelectedCourseID: UUID? // Local state to prevent direct binding issues
 
     // MARK: Body
     var body: some View {
@@ -26,13 +27,15 @@ struct ContentView: View {
             .navigationTitle("補課影片管理系統")
             .toolbar(appState.isVideoPlayerFullScreen ? .hidden : .visible, for: .windowToolbar)
             .fileImporter(isPresented: $showFolderPicker, allowedContentTypes: [.folder], allowsMultipleSelection: false) { result in
-                appState.handleFolderSelection(result)
+                Task {
+                    await appState.handleFolderSelection(result)
+                }
             }
             
-            // 依賴 isFullScreen 和 currentVideoURL 來決定是否顯示全螢幕播放器
-            if appState.isVideoPlayerFullScreen, let url = appState.currentVideoURL {
-                // 建立一個新的播放器實例給全螢幕 View
-                FullScreenVideoPlayerView(player: AVPlayer(url: url), onToggleFullScreen: appState.toggleFullScreen)
+            // 依賴 isFullScreen 和 player 來決定是否顯示全螢幕播放器
+            if appState.isVideoPlayerFullScreen, let player = appState.player {
+                // 傳遞共享的播放器實例給全螢幕 View
+                FullScreenVideoPlayerView(player: player, onToggleFullScreen: appState.toggleFullScreen)
             }
         }
     }
@@ -89,13 +92,24 @@ struct ContentView: View {
                     .padding()
                 Spacer()
             } else {
-                List(selection: $appState.selectedCourseID) {
+                List(selection: $localSelectedCourseID) {
                     ForEach(appState.courses) { course in
                         CourseRowView(course: course)
                             .tag(course.id)
                     }
                 }
                 .listStyle(.sidebar)
+                .onChange(of: localSelectedCourseID) { _, newValue in
+                    if newValue != appState.selectedCourseID {
+                        // Use the safe selection method
+                        appState.selectCourse(newValue)
+                    }
+                }
+                .onChange(of: appState.selectedCourseID) { _, newValue in
+                    if newValue != localSelectedCourseID {
+                        localSelectedCourseID = newValue
+                    }
+                }
             }
         }
     }
@@ -132,11 +146,11 @@ struct ContentView: View {
                                 VideoRowView(
                                     video: $video,
                                     isPlaying: appState.currentVideo?.id == video.id,
-                                    playAction: { appState.selectVideo(video) },
+                                    playAction: { 
+                                        await appState.selectVideo(video) 
+                                    },
                                     saveAction: { 
-                                        Task.detached(priority: .background) {
-                                            appState.saveVideos(for: course.id)
-                                        }
+                                        await appState.saveVideos(for: course.id)
                                     }
                                 )
                             }
@@ -155,7 +169,7 @@ struct ContentView: View {
     
     private var videoPlayerArea: some View {
         Group {
-            // 現在只檢查是否有影片被選中，播放器由 VideoPlayerView 自己管理
+            // 現在只檢查是否有影片被選中，播放器由 AppState 自己管理
             if let video = appState.currentVideo {
                 VStack(spacing: 0) {
                     // 影片標題區
@@ -181,7 +195,7 @@ struct ContentView: View {
                     courseName: course.folderURL.lastPathComponent,
                     unwatchedVideos: unwatched,
                     playUnwatchedVideoAction: { video in
-                        appState.selectVideo(video)
+                        await appState.selectVideo(video)
                     }
                 )
             } else {

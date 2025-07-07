@@ -10,7 +10,7 @@ import SwiftUI
 // 1. 未觀看影片列表的視圖，整列皆可點擊
 struct UnwatchedVideoRowView: View {
     let video: VideoItem
-    let playAction: () -> Void
+    let playAction: () async -> Void
     
     private var formattedDate: String {
         guard let date = video.date else { return "" }
@@ -49,9 +49,8 @@ struct UnwatchedVideoRowView: View {
         .cornerRadius(8)
         .contentShape(Rectangle())
         .onTapGesture {
-            // 使用異步調用來避免在視圖更新期間修改狀態
-            DispatchQueue.main.async {
-                playAction()
+            Task {
+                await playAction()
             }
         }
     }
