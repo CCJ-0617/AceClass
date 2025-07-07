@@ -13,6 +13,8 @@ struct ContentView: View {
     @StateObject private var appState = AppState()
     @State private var showFolderPicker = false
     @State private var localSelectedCourseID: UUID? // Local state to prevent direct binding issues
+    @State private var showingCountdownSettings = false
+    @State private var showingCountdownOverview = false
 
     // MARK: Body
     var body: some View {
@@ -26,6 +28,34 @@ struct ContentView: View {
             }
             .navigationTitle("補課影片管理系統")
             .toolbar(appState.isVideoPlayerFullScreen ? .hidden : .visible, for: .windowToolbar)
+            .toolbar {
+                if !appState.courses.isEmpty {
+                    ToolbarItemGroup(placement: .primaryAction) {
+                        Button {
+                            showingCountdownOverview = true
+                        } label: {
+                            Image(systemName: "calendar.badge.clock")
+                        }
+                        .help("倒數計日概覽")
+                        
+                        Button {
+                            showingCountdownSettings = true
+                        } label: {
+                            Image(systemName: "gear")
+                        }
+                        .help("倒數計日設定")
+                        .disabled(localSelectedCourseID == nil)
+                    }
+                }
+            }
+            .sheet(isPresented: $showingCountdownSettings) {
+                if let selectedCourseID = localSelectedCourseID {
+                    CountdownSettingsSheet(appState: appState, courseID: selectedCourseID, isPresented: $showingCountdownSettings)
+                }
+            }
+            .sheet(isPresented: $showingCountdownOverview) {
+                CountdownOverviewSheet(appState: appState, isPresented: $showingCountdownOverview)
+            }
             .fileImporter(isPresented: $showFolderPicker, allowedContentTypes: [.folder], allowsMultipleSelection: false) { result in
                 Task {
                     await appState.handleFolderSelection(result)
@@ -220,4 +250,44 @@ struct ContentView: View {
         let watched = course.videos.filter { $0.watched }.count
         return CourseStats(totalVideos: total, watchedVideos: watched)
     }
+}
+
+// MARK: - Sheet Wrappers for Countdown Views
+struct CountdownOverviewSheet: View {
+    @ObservedObject var appState: AppState
+    @Binding var isPresented: Bool
+    
+    var body: some View {
+        CountdownOverviewView(appState: appState)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("關閉") {
+                        isPresented = false
+                    }
+                }
+            }
+            .frame(minWidth: 700, minHeight: 600)  // 設定視窗大小
+    }
+}
+
+struct CountdownSettingsSheet: View {
+    @ObservedObject var appState: AppState
+    let courseID: UUID
+    @Binding var isPresented: Bool
+    
+    var body: some View {
+        CountdownSettingsView(appState: appState, courseID: courseID)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("關閉") {
+                        isPresented = false
+                    }
+                }
+            }
+            .frame(minWidth: 600, minHeight: 500)  // 設定視窗大小
+    }
+}
+
+#Preview {
+    ContentView()
 }

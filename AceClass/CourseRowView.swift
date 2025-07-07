@@ -6,13 +6,21 @@ struct CourseRowView: View {
     let course: Course
 
     var body: some View {
-        HStack {
-            Image(systemName: "book")
-                .foregroundColor(.accentColor)
-            Text(course.folderURL.lastPathComponent)
-                .font(.body)
-                .lineLimit(1)
-                .truncationMode(.tail)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Image(systemName: "book")
+                    .foregroundColor(.accentColor)
+                Text(course.folderURL.lastPathComponent)
+                    .font(.body)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Spacer()
+            }
+            
+            // 顯示倒數計日資訊
+            if course.targetDate != nil {
+                CountdownDisplay(course: course)
+            }
         }
         .padding(.vertical, 2)
     }

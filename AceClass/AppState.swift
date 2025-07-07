@@ -318,17 +318,39 @@ class AppState: ObservableObject {
         print("📚 [DEBUG] loadCourses called for: \(sourceURL.path)")
         do {
             // First load the courses on a background thread
-            let newCourses = try await Task.detached {
+            let courseFolders = try await Task.detached {
                 let contents = try FileManager.default.contentsOfDirectory(at: sourceURL, includingPropertiesForKeys: [.isDirectoryKey], options: .skipsHiddenFiles)
-                let courseFolders = contents.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
-                return courseFolders.map { Course(folderURL: $0, videos: []) }
+                return contents.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
             }.value
             
-            print("📚 [DEBUG] Found \(newCourses.count) courses, scheduling UI update")
+            print("📚 [DEBUG] Found \(courseFolders.count) course folders, scheduling UI update")
             // Schedule UI updates for the next run loop to avoid "Publishing changes from within view updates"
             Task { @MainActor in
                 print("📚 [DEBUG] Processing loadCourses UI update in Task")
-                self.courses = newCourses
+                
+                // 載入每個課程的倒數計日資訊，保持現有課程的 ID
+                var coursesWithMetadata: [Course] = []
+                for folderURL in courseFolders {
+                    // 檢查是否已經有這個課程（基於 folderURL 路徑）
+                    if let existingCourse = self.courses.first(where: { $0.folderURL.path == folderURL.path }) {
+                        // 保持現有課程的 ID 和倒數計日資訊
+                        coursesWithMetadata.append(existingCourse)
+                    } else {
+                        // 創建新課程並載入倒數計日資訊
+                        let newCourse = Course(folderURL: folderURL, videos: [])
+                        let (targetDate, targetDescription) = await self.loadCourseMetadata(for: newCourse.id)
+                        let courseWithMetadata = Course(
+                            id: newCourse.id,
+                            folderURL: folderURL,
+                            videos: [],
+                            targetDate: targetDate,
+                            targetDescription: targetDescription
+                        )
+                        coursesWithMetadata.append(courseWithMetadata)
+                    }
+                }
+                
+                self.courses = coursesWithMetadata
                 print("載入了 \(self.courses.count) 個課程。")
                 
                 // If no course is selected, select the first one and load its videos
@@ -463,5 +485,103 @@ class AppState: ObservableObject {
         }
         
         print("==================")
+    }
+    
+    // MARK: - Countdown Management
+    
+    /// 設定課程的目標日期和描述
+    @MainActor
+    func setTargetDate(for courseID: UUID, targetDate: Date?, description: String) async {
+        print("📅 [DEBUG] Setting target date for course: \(courseID.uuidString.prefix(8))")
+        
+        guard let courseIndex = courses.firstIndex(where: { $0.id == courseID }) else {
+            print("📅 [DEBUG] Course not found for setting target date")
+            return
+        }
+        
+        courses[courseIndex].targetDate = targetDate
+        courses[courseIndex].targetDescription = description
+        
+        print("📅 [DEBUG] Target date set: \(targetDate?.formatted(date: .abbreviated, time: .omitted) ?? "nil")")
+        print("📅 [DEBUG] Description: \(description)")
+        
+        // 保存課程數據
+        await saveCourseMetadata(for: courseID)
+    }
+    
+    /// 獲取指定課程的倒數計日資訊
+    func getCountdownInfo(for courseID: UUID) -> (daysRemaining: Int?, countdownText: String, isOverdue: Bool) {
+        guard let course = courses.first(where: { $0.id == courseID }) else {
+            return (nil, "課程未找到", false)
+        }
+        
+        return (course.daysRemaining, course.countdownText, course.isOverdue)
+    }
+    
+    /// 獲取所有即將到期的課程（7天內）
+    var upcomingDeadlines: [Course] {
+        return courses.filter { course in
+            guard let daysRemaining = course.daysRemaining else { return false }
+            return daysRemaining >= 0 && daysRemaining <= 7
+        }.sorted { course1, course2 in
+            let days1 = course1.daysRemaining ?? Int.max
+            let days2 = course2.daysRemaining ?? Int.max
+            return days1 < days2
+        }
+    }
+    
+    /// 獲取所有過期的課程
+    var overdueCoures: [Course] {
+        return courses.filter { $0.isOverdue }.sorted { course1, course2 in
+            let days1 = abs(course1.daysRemaining ?? 0)
+            let days2 = abs(course2.daysRemaining ?? 0)
+            return days1 > days2 // 過期最久的排在前面
+        }
+    }
+    
+    /// 保存課程元數據（包括倒數計日資訊）
+    @MainActor
+    private func saveCourseMetadata(for courseID: UUID) async {
+        guard let course = courses.first(where: { $0.id == courseID }) else { return }
+        
+        let courseData = course
+        
+        // 在背景線程保存數據
+        await Task.detached {
+            do {
+                let encoder = JSONEncoder()
+                encoder.dateEncodingStrategy = .iso8601
+                let data = try encoder.encode(courseData)
+                
+                // 保存到 UserDefaults 中（使用課程ID作為鍵值）
+                let key = "course_metadata_\(courseID.uuidString)"
+                UserDefaults.standard.set(data, forKey: key)
+                
+                print("📅 [DEBUG] Course metadata saved for: \(courseID.uuidString.prefix(8))")
+            } catch {
+                print("📅 [ERROR] Failed to save course metadata: \(error.localizedDescription)")
+            }
+        }.value
+    }
+    
+    /// 載入課程元數據（包括倒數計日資訊）
+    @MainActor
+    private func loadCourseMetadata(for courseID: UUID) async -> (targetDate: Date?, targetDescription: String) {
+        return await Task.detached {
+            let key = "course_metadata_\(courseID.uuidString)"
+            guard let data = UserDefaults.standard.data(forKey: key) else {
+                return (nil, "")
+            }
+            
+            do {
+                let decoder = JSONDecoder()
+                decoder.dateDecodingStrategy = .iso8601
+                let courseData = try decoder.decode(Course.self, from: data)
+                return (courseData.targetDate, courseData.targetDescription)
+            } catch {
+                print("📅 [ERROR] Failed to load course metadata: \(error.localizedDescription)")
+                return (nil, "")
+            }
+        }.value
     }
 }

@@ -80,13 +80,61 @@ struct VideoItem: Identifiable, Codable {
     }
 }
 
-struct Course: Identifiable, Hashable {
-    let id = UUID()
+struct Course: Identifiable, Hashable, Codable {
+    let id: UUID
     let folderURL: URL
     var videos: [VideoItem]
+    var targetDate: Date?        // 目標完成日期
+    var targetDescription: String // 目標描述
     
     var jsonFileURL: URL {
         folderURL.appendingPathComponent("videos.json")
+    }
+    
+    // 計算剩餘天數
+    var daysRemaining: Int? {
+        guard let targetDate = targetDate else { return nil }
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let target = calendar.startOfDay(for: targetDate)
+        let components = calendar.dateComponents([.day], from: today, to: target)
+        return components.day
+    }
+    
+    // 是否已過期
+    var isOverdue: Bool {
+        guard let daysRemaining = daysRemaining else { return false }
+        return daysRemaining < 0
+    }
+    
+    // 格式化的倒數計日文字
+    var countdownText: String {
+        guard let daysRemaining = daysRemaining else { return "未設定目標日期" }
+        
+        if daysRemaining < 0 {
+            return "已過期 \(abs(daysRemaining)) 天"
+        } else if daysRemaining == 0 {
+            return "今天到期"
+        } else {
+            return "剩餘 \(daysRemaining) 天"
+        }
+    }
+    
+    init(folderURL: URL, videos: [VideoItem] = [], targetDate: Date? = nil, targetDescription: String = "") {
+        self.id = UUID()
+        self.folderURL = folderURL
+        self.videos = videos
+        self.targetDate = targetDate
+        self.targetDescription = targetDescription
+    }
+    
+    // 特殊的初始化器用於從存儲中恢復
+    init(id: UUID, folderURL: URL, videos: [VideoItem] = [], targetDate: Date? = nil, targetDescription: String = "") {
+        self.id = id
+        self.folderURL = folderURL
+        self.videos = videos
+        self.targetDate = targetDate
+        self.targetDescription = targetDescription
     }
     
     static func == (lhs: Course, rhs: Course) -> Bool {
