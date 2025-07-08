@@ -425,7 +425,7 @@ ls -la ~/Library/Containers/$YourUserName$.AceClass/
 
 - **GitHub Issues**: [在此回報問題](https://github.com/your-repo/AceClass/issues)
 - **電子郵件**: support@aceclass.app
-- **文檔**: 查看完整的開發文檔 `DEVELOPMENT.md`
+- **文檔**: 查看完整的開發文檔 `DEVELOPER_GUIDE.md`
 
 #### 隱私聲明
 
@@ -446,7 +446,7 @@ ls -la ~/Library/Containers/$YourUserName$.AceClass/
 - **倒數計日概覽**：統一查看所有課程的目標狀態和學習進度
 - **目標描述功能**：為每個目標添加詳細說明（如：期末考試、作業截止等）
 
-#### � 介面改進
+#### 💻 介面改進
 - **CountdownSettingsView**：專用的倒數計日設定界面
   - Toggle 開關控制目標日期啟用/停用
   - DatePicker 選擇目標日期
@@ -479,7 +479,7 @@ ls -la ~/Library/Containers/$YourUserName$.AceClass/
 - **CountdownStatus 枚舉**：定義四種倒數計日狀態
 - **AppState 方法擴展**：新增倒數計日資料的 CRUD 操作方法
 
-#### � 隱私與安全
+#### 🔒 隱私與安全
 - **本地優先**：倒數計日設定僅存本地，保護個人學習計劃隱私
 - **沙盒相容**：完全符合 macOS App Sandbox 安全要求
 - **資料隔離**：不同課程的設定完全獨立，避免資料衝突
