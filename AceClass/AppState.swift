@@ -531,7 +531,7 @@ class AppState: ObservableObject {
     }
     
     /// 獲取所有過期的課程
-    var overdueCoures: [Course] {
+    var overdueCourses: [Course] {
         return courses.filter { $0.isOverdue }.sorted { course1, course2 in
             let days1 = abs(course1.daysRemaining ?? 0)
             let days2 = abs(course2.daysRemaining ?? 0)

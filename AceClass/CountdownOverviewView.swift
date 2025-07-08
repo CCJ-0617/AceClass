@@ -13,7 +13,7 @@ struct CountdownOverviewView: View {
                     }
                     
                     // 已過期的課程
-                    if !appState.overdueCoures.isEmpty {
+                    if !appState.overdueCourses.isEmpty {
                         overdueCoursesSection
                     }
                     
@@ -51,12 +51,12 @@ struct CountdownOverviewView: View {
         VStack(alignment: .leading, spacing: 12) {
             SectionHeader(
                 title: "已過期",
-                subtitle: "\(appState.overdueCoures.count) 個課程",
+                subtitle: "\(appState.overdueCourses.count) 個課程",
                 icon: "exclamationmark.triangle.fill",
                 color: .red
             )
             
-            ForEach(appState.overdueCoures, id: \.id) { course in
+            ForEach(appState.overdueCourses, id: \.id) { course in
                 CourseCountdownCard(course: course, appState: appState)
             }
         }
