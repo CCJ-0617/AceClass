@@ -451,7 +451,7 @@ struct CountdownSettingsView: View {
                     .cornerRadius(12)
                 
                     // 課程狀態概覽
-                    if !appState.upcomingDeadlines.isEmpty || !appState.overdueCoures.isEmpty {
+                    if !appState.upcomingDeadlines.isEmpty || !appState.overdueCourses.isEmpty {
                         courseStatusSection
                             .padding()
                             .background(Color(.controlBackgroundColor))
