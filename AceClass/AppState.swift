@@ -53,7 +53,7 @@ class AppState: ObservableObject {
     // MARK: - Private Properties
     private let bookmarkKey = "selectedFolderBookmark"
     private var securityScopedURL: URL? // 持有主資料夾的安全作用域存取權
-    private var currentlyAccessedVideoURL: URL? // 持有當前播放影片的獨立安全作用域存取權
+    private var currentlyAccessedVideoURL: URL? // 持有當前播放影片檔案的安全作用域存取權
 
     // MARK: - Computed Properties
     var selectedCourse: Course? {
@@ -133,27 +133,25 @@ class AppState: ObservableObject {
             self.player = nil
 
             guard let course = selectedCourse, let videoToPlay = video else { return }
-            guard let sourceFolderURL = self.securityScopedURL else {
+            guard self.securityScopedURL != nil else {
                 print("CRITICAL: Cannot play video because the main folder's security scope is missing.")
                 return
             }
 
-            // 4. Start security access and create the player.
-            if sourceFolderURL.startAccessingSecurityScopedResource() {
-                let fileURL = course.folderURL.appendingPathComponent(videoToPlay.fileName)
-                
+            // 4. Start security access on the actual video file and create the player.
+            let fileURL = course.folderURL.appendingPathComponent(videoToPlay.fileName)
+            if fileURL.startAccessingSecurityScopedResource() {
                 // 5. Create the player and update the state.
                 print("🎥 [DEBUG] Creating AVPlayer for: \(fileURL.path)")
                 let newPlayer = AVPlayer(url: fileURL)
                 self.player = newPlayer
                 self.player?.play()
                 await self.markVideoAsWatched(videoToPlay)
-                
-                // We keep the access to the parent folder open while the player might need it.
-                // It will be closed when the next video is selected or the app closes.
-                self.currentlyAccessedVideoURL = sourceFolderURL
+
+                // Keep access to the video file while it's playing.
+                self.currentlyAccessedVideoURL = fileURL
             } else {
-                print("Failed to start security-scoped access for the source folder.")
+                print("Failed to start security-scoped access for the video file.")
             }
     }
 
