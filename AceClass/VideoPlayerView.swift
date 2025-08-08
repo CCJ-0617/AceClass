@@ -7,6 +7,32 @@
 
 import SwiftUI
 import AVKit
+#if os(macOS)
+import AppKit
+#endif
+
+// MARK: - AppKit-backed Player View (to avoid _AVKit_SwiftUI runtime issues)
+#if os(macOS)
+struct AVPlayerViewRepresentable: NSViewRepresentable {
+    let player: AVPlayer
+
+    func makeNSView(context: Context) -> AVPlayerView {
+        let view = AVPlayerView()
+        view.controlsStyle = .floating
+        view.showsFullScreenToggleButton = true
+        view.allowsPictureInPicturePlayback = false
+        view.updatesNowPlayingInfoCenter = false
+        view.player = player
+        return view
+    }
+
+    func updateNSView(_ nsView: AVPlayerView, context: Context) {
+        if nsView.player !== player {
+            nsView.player = player
+        }
+    }
+}
+#endif
 
 // 1. 用於右側欄位的標準影片播放器
 struct VideoPlayerView: View {
@@ -17,10 +43,11 @@ struct VideoPlayerView: View {
         ZStack(alignment: .bottomTrailing) {
             // Use the shared player directly from appState
             if let player = appState.player {
+                #if os(macOS)
+                AVPlayerViewRepresentable(player: player)
+                #else
                 VideoPlayer(player: player)
-                    .onAppear {
-                        // The player's lifecycle is managed by AppState, so we don't need to call play() here.
-                    }
+                #endif
             } else {
                 // Display a loading indicator if a video is selected but the player isn't ready yet
                 // Otherwise, show the placeholder text.
@@ -74,7 +101,11 @@ struct FullScreenVideoPlayerView: View {
             Color.black
                 .edgesIgnoringSafeArea(.all)
             
+            #if os(macOS)
+            AVPlayerViewRepresentable(player: player)
+            #else
             VideoPlayer(player: player)
+            #endif
 
             // 退出全螢幕按鈕
             Button(action: onToggleFullScreen) {

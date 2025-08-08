@@ -15,7 +15,7 @@ class AppState: ObservableObject {
         didSet {
             if oldValue != selectedCourseID {
                 print("🔄 [DEBUG] selectedCourseID changed from \(oldValue?.uuidString.prefix(8) ?? "nil") to \(selectedCourseID?.uuidString.prefix(8) ?? "nil")")
-                // Schedule the change processing to avoid publishing during a view update.
+                // Schedule the change processing to avoid publishing during view updates.
                 // Use asyncAfter to ensure we're completely outside the current update cycle.
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.001) { [weak self] in
                     guard let self = self else { return }
@@ -202,9 +202,35 @@ class AppState: ObservableObject {
         }
     }
     
+    // VERBOSE DIAGNOSTICS
+    nonisolated private func logURLDiagnostics(_ url: URL, context: String) {
+        print("🔎 [DIAG] Context=\(context)")
+        print("🔎 [DIAG] URL path=\(url.path)")
+        do {
+            let keys: Set<URLResourceKey> = [
+                .isReadableKey,
+                .isWritableKey,
+                .isDirectoryKey,
+                .volumeNameKey,
+                .volumeIsRemovableKey,
+                .volumeIsLocalKey,
+                .volumeIsReadOnlyKey
+            ]
+            let values = try url.resourceValues(forKeys: keys)
+            print("🔎 [DIAG] isDirectory=\(values.isDirectory ?? false) isReadable=\(values.isReadable ?? false) isWritable=\(values.isWritable ?? false)")
+            print("🔎 [DIAG] volume name=\(values.volumeName ?? "nil") removable=\(values.volumeIsRemovable ?? false) local=\(values.volumeIsLocal ?? false) readOnly=\(values.volumeIsReadOnly ?? false)")
+        } catch {
+            print("🔎 [DIAG] Failed to read URL resource values: \(error.localizedDescription)")
+        }
+    }
+    
     func handleFolderSelection(_ result: Result<[URL], Error>) async {
         switch result {
         case .success(let urls):
+            print("📁 [DEBUG] fileImporter returned \(urls.count) URL(s)")
+            if let first = urls.first {
+                logURLDiagnostics(first, context: "fileImporter selection (pre-security-scope)")
+            }
             guard let folder = urls.first else { return }
 
             // First, stop all previous resource access on the main thread.
@@ -212,11 +238,15 @@ class AppState: ObservableObject {
 
             // Perform blocking file I/O and bookmarking on a background thread.
             Task.detached(priority: .userInitiated) {
+                print("📁 [DEBUG] Attempting startAccessingSecurityScopedResource on selected folder…")
                 // Start security access to get permissions for the new folder.
                 guard folder.startAccessingSecurityScopedResource() else {
                     print("ERROR: Could not start security-scoped access for the newly selected folder.")
+                    self.logURLDiagnostics(folder, context: "startAccessingSecurityScopedResource FAILED")
+                    print("HINT: Ensure 'com.apple.security.files.user-selected.read-write' entitlement is enabled and that the folder was chosen via the system picker.")
                     return
                 }
+                self.logURLDiagnostics(folder, context: "startAccessingSecurityScopedResource SUCCEEDED")
 
                 do {
                     // Create and save the bookmark data.
@@ -227,7 +257,7 @@ class AppState: ObservableObject {
                     )
                     // UserDefaults is thread-safe.
                     UserDefaults.standard.set(bookmarkData, forKey: self.bookmarkKey)
-                    print("Successfully saved bookmark data for the new folder.")
+                    print("Successfully saved bookmark data for the new folder. size=\(bookmarkData.count) bytes")
 
                     // Stop access now that we have the bookmark.
                     folder.stopAccessingSecurityScopedResource()
@@ -257,18 +287,27 @@ class AppState: ObservableObject {
             print("找不到書籤資料。")
             return
         }
+        print("🔖 [DEBUG] bookmarkData size=\(bookmarkData.count) bytes")
         
         do {
             var isStale = false
             let url = try URL(resolvingBookmarkData: bookmarkData, options: .withSecurityScope, relativeTo: nil, bookmarkDataIsStale: &isStale)
+            print("🔖 [DEBUG] Resolved bookmark URL: \(url.path) isStale=\(isStale)")
+            logURLDiagnostics(url, context: "after resolving bookmark (pre-startAccess)")
             
             if isStale {
-                print("🔖 [DEBUG] Bookmark is stale, clearing data")
-                print("書籤已過期，需要重新選擇資料夾。")
-                self.sourceFolderURL = nil
-                self.courses = []
-                UserDefaults.standard.removeObject(forKey: bookmarkKey)
-                return
+                print("🔖 [DEBUG] Bookmark is stale, attempting to refresh bookmark data instead of clearing")
+                do {
+                    let refreshed = try url.bookmarkData(
+                        options: .withSecurityScope,
+                        includingResourceValuesForKeys: nil,
+                        relativeTo: nil
+                    )
+                    UserDefaults.standard.set(refreshed, forKey: bookmarkKey)
+                    print("🔖 [DEBUG] Refreshed stale bookmark successfully. size=\(refreshed.count) bytes")
+                } catch {
+                    print("⚠️ [DEBUG] Failed to refresh stale bookmark: \(error.localizedDescription). Will proceed with resolved URL anyway.")
+                }
             }
             
             // 嘗試開始存取安全作用域資源
@@ -277,9 +316,18 @@ class AppState: ObservableObject {
                 print("成功透過書籤取得安全作用域存取權限: \(url.path)")
                 
                 // 檢查權限狀態
-                if let resourceValues = try? url.resourceValues(forKeys: [.isWritableKey]) {
+                if let resourceValues = try? url.resourceValues(forKeys: [.isWritableKey, .isReadableKey]) {
                     let isWritable = resourceValues.isWritable ?? false
-                    print("資料夾寫入權限狀態: \(isWritable ? "可寫" : "唯讀")")
+                    let isReadable = resourceValues.isReadable ?? false
+                    print("資料夾權限狀態: 讀=\(isReadable ? "可讀" : "不可讀") 寫=\(isWritable ? "可寫" : "唯讀")")
+                }
+                
+                // Quick probe: attempt to list directory to confirm effective access
+                do {
+                    let probe = try FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: [.isDirectoryKey], options: .skipsHiddenFiles)
+                    print("🔖 [DEBUG] Probe listing count=\(probe.count) (post-startAccess)")
+                } catch {
+                    print("⚠️ [DEBUG] Probe listing failed even after startAccess: \(error.localizedDescription)")
                 }
                 
                 print("🔖 [DEBUG] Setting securityScopedURL and sourceFolderURL")
@@ -295,7 +343,7 @@ class AppState: ObservableObject {
                             relativeTo: nil
                         )
                         UserDefaults.standard.set(freshBookmarkData, forKey: self.bookmarkKey)
-                        print("已更新書籤資料 (讀寫權限)")
+                        print("已更新書籤資料 (讀寫權限)，size=\(freshBookmarkData.count) bytes")
                     } catch {
                         print("警告：無法更新書籤資料：\(error.localizedDescription)")
                     }
@@ -304,8 +352,19 @@ class AppState: ObservableObject {
                 print("🔖 [DEBUG] About to call loadCourses")
                 // 載入課程，但不要觸發UI更新
                 await self.loadCourses(from: url)
+                
+                // 額外列印目前的權限與可讀性檢查
+                self.debugPermissionStatus()
             } else {
-                print("無法透過書籤取得安全作用域存取權限。")
+                print("無法透過書籤取得安全作用域存取權限：\(url.path)")
+                logURLDiagnostics(url, context: "startAccessingSecurityScopedResource FAILED in loadBookmark")
+                // Last resort diagnostic: try a non-scoped directory listing (may fail under sandbox)
+                do {
+                    let probe = try FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: [.isDirectoryKey], options: .skipsHiddenFiles)
+                    print("🔖 [DEBUG] Fallback non-scoped listing count=\(probe.count)")
+                } catch {
+                    print("🔖 [DEBUG] Fallback non-scoped listing failed: \(error.localizedDescription)")
+                }
             }
         } catch {
             print("解析書籤失敗: \(error.localizedDescription)")
@@ -318,25 +377,54 @@ class AppState: ObservableObject {
         print("📚 [DEBUG] loadCourses called for: \(sourceURL.path)")
         do {
             // First load the courses on a background thread
-            let courseFolders = try await Task.detached {
-                let contents = try FileManager.default.contentsOfDirectory(at: sourceURL, includingPropertiesForKeys: [.isDirectoryKey], options: .skipsHiddenFiles)
-                return contents.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
+            let loadResult = try await Task.detached { () -> (courseFolders: [URL], rootVideoFiles: [URL]) in
+                let contents = try FileManager.default.contentsOfDirectory(
+                    at: sourceURL,
+                    includingPropertiesForKeys: [.isDirectoryKey],
+                    options: .skipsHiddenFiles
+                )
+                let folders = contents.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
+                // Also check if there are videos directly under the selected folder
+                let files = contents.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == false }
+                let rootVideos = files.filter { ["mp4", "mov", "m4v"].contains($0.pathExtension.lowercased()) }
+                return (folders, rootVideos)
             }.value
             
-            print("📚 [DEBUG] Found \(courseFolders.count) course folders, scheduling UI update")
+            let courseFolders = loadResult.courseFolders
+            let rootVideoFiles = loadResult.rootVideoFiles
+            
+            print("📚 [DEBUG] Found \(courseFolders.count) course folders; root has \(rootVideoFiles.count) video files (mp4/mov/m4v)")
+            
             // Schedule UI updates for the next run loop to avoid "Publishing changes from within view updates"
             Task { @MainActor in
                 print("📚 [DEBUG] Processing loadCourses UI update in Task")
                 
-                // 載入每個課程的倒數計日資訊，保持現有課程的 ID
                 var coursesWithMetadata: [Course] = []
-                for folderURL in courseFolders {
-                    // 檢查是否已經有這個課程（基於 folderURL 路徑）
+                
+                if !courseFolders.isEmpty {
+                    // Normal case: each subfolder is a course
+                    for folderURL in courseFolders {
+                        if let existingCourse = self.courses.first(where: { $0.folderURL.path == folderURL.path }) {
+                            coursesWithMetadata.append(existingCourse)
+                        } else {
+                            let newCourse = Course(folderURL: folderURL, videos: [])
+                            let (targetDate, targetDescription) = await self.loadCourseMetadata(for: newCourse.id)
+                            let courseWithMetadata = Course(
+                                id: newCourse.id,
+                                folderURL: folderURL,
+                                videos: [],
+                                targetDate: targetDate,
+                                targetDescription: targetDescription
+                            )
+                            coursesWithMetadata.append(courseWithMetadata)
+                        }
+                    }
+                } else if !rootVideoFiles.isEmpty {
+                    // Fallback: selected folder itself contains videos; treat it as a single course
+                    let folderURL = sourceURL
                     if let existingCourse = self.courses.first(where: { $0.folderURL.path == folderURL.path }) {
-                        // 保持現有課程的 ID 和倒數計日資訊
                         coursesWithMetadata.append(existingCourse)
                     } else {
-                        // 創建新課程並載入倒數計日資訊
                         let newCourse = Course(folderURL: folderURL, videos: [])
                         let (targetDate, targetDescription) = await self.loadCourseMetadata(for: newCourse.id)
                         let courseWithMetadata = Course(
@@ -348,6 +436,23 @@ class AppState: ObservableObject {
                         )
                         coursesWithMetadata.append(courseWithMetadata)
                     }
+                } else {
+                    print("📚 [DEBUG] No subfolders and no supported video files found under the selected folder")
+                    // Provide a short directory listing to aid debugging
+                    let listing: [String]? = try? await Task.detached(priority: .utility) { () throws -> [String] in
+                        let contents = try FileManager.default.contentsOfDirectory(
+                            at: sourceURL,
+                            includingPropertiesForKeys: [.isDirectoryKey],
+                            options: .skipsHiddenFiles
+                        )
+                        return contents.prefix(20).map { url in
+                            let isDir = (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
+                            return "- \(url.lastPathComponent) \(isDir ? "[DIR]" : "[FILE] ext=\(url.pathExtension.lowercased())")"
+                        }
+                    }.value
+                    if let listing = listing {
+                        print("📚 [DEBUG] Directory listing (up to 20):\n" + listing.joined(separator: "\n"))
+                    }
                 }
                 
                 self.courses = coursesWithMetadata
@@ -356,14 +461,12 @@ class AppState: ObservableObject {
                 // If no course is selected, select the first one and load its videos
                 if self.selectedCourseID == nil, let firstCourse = self.courses.first {
                     print("📚 [DEBUG] Selecting first course: \(firstCourse.folderURL.lastPathComponent)")
-                    // Use the safe selection method to avoid nested publishing issues
                     self.selectCourse(firstCourse.id)
-                    // Load videos for the selected course
                     await self.loadVideos(for: firstCourse)
                 }
             }
         } catch {
-            print("讀取課程資料夾失敗: \(error.localizedDescription)")
+            print("讀取課程資料夾失敗: \(error.localizedDescription) at: \(sourceURL.path)")
             print("請確認應用程式有存取所選資料夾的權限，或嘗試重新選擇資料夾")
         }
     }
@@ -394,31 +497,37 @@ class AppState: ObservableObject {
                 
                 // 讀取資料夾內容
                 let contents = try FileManager.default.contentsOfDirectory(at: course.folderURL, includingPropertiesForKeys: nil, options: .skipsHiddenFiles)
-                let videoFiles = contents.filter { $0.pathExtension.lowercased() == "mp4" }
+                let videoFiles = contents.filter { ["mp4", "mov", "m4v"].contains($0.pathExtension.lowercased()) }
                 
                 var updatedVideos: [VideoItem] = []
-                let loadedFileNames = Set(loadedVideos.map { $0.fileName })
                 
-                // 加入已有的影片
-                updatedVideos.append(contentsOf: loadedVideos)
+                // 若沒有任何影片，附上簡要清單協助偵錯
+                if videoFiles.isEmpty {
+                    let debugList = contents.prefix(20).map { url in "- \(url.lastPathComponent) [ext=\(url.pathExtension.lowercased())]" }
+                    print("🎬 [DEBUG] No supported video files found. Directory sample (up to 20):\n" + debugList.joined(separator: "\n"))
+                }
                 
-                // 加入資料夾中新增的影片
                 for fileURL in videoFiles {
-                    if !loadedFileNames.contains(fileURL.lastPathComponent) {
-                        updatedVideos.append(VideoItem(fileName: fileURL.lastPathComponent))
+                    let fileName = fileURL.lastPathComponent
+                    if let existing = loadedVideos.first(where: { $0.fileName == fileName }) {
+                        updatedVideos.append(existing)
+                    } else {
+                        updatedVideos.append(VideoItem(fileName: fileName))
                     }
                 }
                 
-                // 移除在JSON中但已從資料夾刪除的影片
-                let fileNamesOnDisk = Set(videoFiles.map { $0.lastPathComponent })
-                updatedVideos.removeAll { !fileNamesOnDisk.contains($0.fileName) }
-                
-                // 依日期排序
-                updatedVideos.sort {
-                    guard let date1 = $0.date, let date2 = $1.date else {
-                        return $0.fileName < $1.fileName
+                // 根據日期排序，無日期者放最後
+                updatedVideos.sort { (a, b) -> Bool in
+                    switch (a.date, b.date) {
+                    case let (date1?, date2?):
+                        return date1 < date2
+                    case (nil, nil):
+                        return a.displayName.localizedCompare(b.displayName) == .orderedAscending
+                    case (nil, _):
+                        return false
+                    case (_, nil):
+                        return true
                     }
-                    return date1 < date2
                 }
                 
                 return updatedVideos
