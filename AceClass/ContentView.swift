@@ -216,7 +216,7 @@ struct ContentView: View {
                 let unwatched = course.videos.filter { !$0.watched }
                 CourseStatisticsView(
                     stats: stats,
-                    courseName: course.folderURL.lastPathComponent,
+                    course: course,
                     unwatchedVideos: unwatched,
                     playUnwatchedVideoAction: { video in
                         await appState.selectVideo(video)

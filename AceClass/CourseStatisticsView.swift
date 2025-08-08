@@ -99,17 +99,17 @@ struct UnwatchedVideosListView: View {
 }
 
 
-// 2. 新增一個專門顯示統計數據的 View
+// 2. 新增一個專門顯示統計數據的 View（加入內圈倒數環）
 struct CourseStatisticsView: View {
     let stats: CourseStats
-    let courseName: String
+    let course: Course
     let unwatchedVideos: [VideoItem]
     let playUnwatchedVideoAction: (VideoItem) async -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             // 標題
-            Text(courseName)
+            Text(course.folderURL.lastPathComponent)
                 .font(.largeTitle)
                 .bold()
                 .padding(.bottom, 5)
@@ -117,17 +117,30 @@ struct CourseStatisticsView: View {
             // 進度環與統計數據
             HStack(spacing: 50) {
                 ZStack {
+                    // 外圈背景
                     Circle()
                         .stroke(lineWidth: 20)
-                        .opacity(0.3)
+                        .opacity(0.25)
                         .foregroundColor(.blue)
 
+                    // 外圈已觀看進度
                     Circle()
                         .trim(from: 0.0, to: stats.percentageWatched)
                         .stroke(style: StrokeStyle(lineWidth: 20, lineCap: .round, lineJoin: .round))
                         .foregroundColor(.blue)
                         .rotationEffect(Angle(degrees: -90))
                         .animation(.linear, value: stats.percentageWatched)
+
+                    // 內圈倒數（若有）
+                    if let countdown = countdownProgress {
+                        Circle()
+                            .trim(from: 0.0, to: countdown.progress)
+                            .stroke(style: StrokeStyle(lineWidth: 10, lineCap: .round, lineJoin: .round))
+                            .foregroundColor(countdown.color)
+                            .rotationEffect(Angle(degrees: -90))
+                            .scaleEffect(0.70) // 內圈縮小
+                            .animation(.linear, value: countdown.progress)
+                    }
 
                     VStack {
                         Text(stats.formattedPercentage)
@@ -177,6 +190,20 @@ struct CourseStatisticsView: View {
         }
         .padding(30)
     }
+
+    // 內圈倒數進度（以 30 天為視覺窗，不足/超過會分別飽和為 1 / 0）
+    private var countdownProgress: (progress: Double, color: Color)? {
+        guard let target = course.targetDate else { return nil }
+        let now = Date()
+        let remainingSeconds = target.timeIntervalSince(now) // 正值：未到期；負值：已過期
+        let dayInSeconds = 24.0 * 60.0 * 60.0
+        let windowSeconds = 30.0 * dayInSeconds
+        if remainingSeconds <= 0 { return (1.0, .red) }
+        let clamped = min(remainingSeconds, windowSeconds)
+        let progress = 1.0 - (clamped / windowSeconds)
+        let color: Color = remainingSeconds <= 3.0 * dayInSeconds ? .orange : .blue
+        return (progress, color)
+    }
 }
 
 struct StatRow: View {
@@ -198,7 +225,7 @@ struct StatRow: View {
 #Preview {
     CourseStatisticsView(
         stats: CourseStats(totalVideos: 10, watchedVideos: 4),
-        courseName: "測試課程",
+        course: Course(folderURL: URL(fileURLWithPath: "/test"), targetDate: Calendar.current.date(byAdding: .day, value: 14, to: Date()), targetDescription: "期末考"),
         unwatchedVideos: [
             VideoItem(fileName: "範例影片1.mp4", note: "未觀看的影片1"),
             VideoItem(fileName: "範例影片2.mp4", note: "未觀看的影片2")
