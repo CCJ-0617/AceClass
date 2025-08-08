@@ -7,7 +7,7 @@ struct CourseRowView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack {
+            HStack(spacing: 8) {
                 Image(systemName: "book")
                     .foregroundColor(.accentColor)
                 Text(course.folderURL.lastPathComponent)
@@ -15,6 +15,16 @@ struct CourseRowView: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
                 Spacer()
+                // 右側 D-天數徽章
+                if let days = course.daysRemaining {
+                    Text(days >= 0 ? "D-\(days)" : "D+\(abs(days))")
+                        .font(.caption2).bold()
+                        .padding(.vertical, 2)
+                        .padding(.horizontal, 6)
+                        .background(daysBadgeBackground)
+                        .foregroundColor(daysBadgeForeground)
+                        .clipShape(Capsule())
+                }
             }
             
             // 顯示倒數計日資訊
@@ -23,5 +33,17 @@ struct CourseRowView: View {
             }
         }
         .padding(.vertical, 2)
+    }
+    
+    private var daysBadgeBackground: Color {
+        if course.isOverdue { return .red.opacity(0.15) }
+        if let d = course.daysRemaining, d <= 3 { return .orange.opacity(0.15) }
+        return .blue.opacity(0.15)
+    }
+    
+    private var daysBadgeForeground: Color {
+        if course.isOverdue { return .red }
+        if let d = course.daysRemaining, d <= 3 { return .orange }
+        return .blue
     }
 }

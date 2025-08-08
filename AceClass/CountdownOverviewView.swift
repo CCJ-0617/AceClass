@@ -2,34 +2,91 @@ import SwiftUI
 
 struct CountdownOverviewView: View {
     @ObservedObject var appState: AppState
+    @State private var selection: Filter = .all
+    @State private var sort: Sort = .byDays
+    
+    enum Filter: String, CaseIterable, Identifiable {
+        case all = "全部"
+        case upcoming = "即將到期"
+        case overdue = "已過期"
+        var id: String { rawValue }
+    }
+    
+    enum Sort: String, CaseIterable, Identifiable {
+        case byDays = "依天數"
+        case byName = "依名稱"
+        var id: String { rawValue }
+    }
     
     var body: some View {
         NavigationView {
-            ScrollView {
-                LazyVStack(spacing: 16) {
-                    // 即將到期的課程
-                    if !appState.upcomingDeadlines.isEmpty {
-                        upcomingDeadlinesSection
+            VStack(spacing: 0) {
+                // Controls
+                HStack(spacing: 12) {
+                    Picker("篩選", selection: $selection) {
+                        ForEach(Filter.allCases) { f in Text(f.rawValue).tag(f) }
                     }
+                    .pickerStyle(.segmented)
                     
-                    // 已過期的課程
-                    if !appState.overdueCoures.isEmpty {
-                        overdueCoursesSection
+                    Spacer()
+                    
+                    Picker("排序", selection: $sort) {
+                        ForEach(Sort.allCases) { s in Text(s.rawValue).tag(s) }
                     }
-                    
-                    // 所有有設定目標日期的課程
-                    allCoursesWithTargetsSection
-                    
-                    if appState.courses.filter({ $0.targetDate != nil }).isEmpty {
-                        emptyStateView
-                    }
+                    .pickerStyle(.segmented)
                 }
-                .padding()
+                .padding([.horizontal, .top])
+                .padding(.bottom, 8)
+                
+                ScrollView {
+                    LazyVStack(spacing: 16) {
+                        if selection == .upcoming || selection == .all {
+                            if !appState.upcomingDeadlines.isEmpty {
+                                upcomingDeadlinesSection
+                            }
+                        }
+                        
+                        if selection == .overdue || selection == .all {
+                            if !appState.overdueCoures.isEmpty {
+                                overdueCoursesSection
+                            }
+                        }
+                        
+                        if selection == .all {
+                            allCoursesWithTargetsSection
+                        }
+                        
+                        if filteredCoursesWithTargets.isEmpty {
+                            emptyStateView
+                        }
+                    }
+                    .padding()
+                }
+                .navigationTitle("倒數計日概覽")
+                .frame(minWidth: 500, minHeight: 400)
             }
-            .navigationTitle("倒數計日概覽")
-            .frame(minWidth: 500, minHeight: 400)  // 設定最小視窗大小
         }
-        .frame(minWidth: 700, minHeight: 600)  // 整個視圖的最小大小
+        .frame(minWidth: 700, minHeight: 600)
+    }
+    
+    private var filteredCoursesWithTargets: [Course] {
+        let base = appState.courses.filter { $0.targetDate != nil }
+        let filtered: [Course]
+        switch selection {
+        case .all: filtered = base
+        case .upcoming: filtered = appState.upcomingDeadlines
+        case .overdue: filtered = appState.overdueCoures
+        }
+        return sortCourses(filtered)
+    }
+    
+    private func sortCourses(_ courses: [Course]) -> [Course] {
+        switch sort {
+        case .byDays:
+            return courses.sorted { (a, b) in (a.daysRemaining ?? Int.max) < (b.daysRemaining ?? Int.max) }
+        case .byName:
+            return courses.sorted { a, b in a.folderURL.lastPathComponent.localizedCaseInsensitiveCompare(b.folderURL.lastPathComponent) == .orderedAscending }
+        }
     }
     
     private var upcomingDeadlinesSection: some View {
@@ -41,7 +98,7 @@ struct CountdownOverviewView: View {
                 color: .orange
             )
             
-            ForEach(appState.upcomingDeadlines, id: \.id) { course in
+            ForEach(sortCourses(appState.upcomingDeadlines), id: \.id) { course in
                 CourseCountdownCard(course: course, appState: appState)
             }
         }
@@ -56,7 +113,7 @@ struct CountdownOverviewView: View {
                 color: .red
             )
             
-            ForEach(appState.overdueCoures, id: \.id) { course in
+            ForEach(sortCourses(appState.overdueCoures), id: \.id) { course in
                 CourseCountdownCard(course: course, appState: appState)
             }
         }
@@ -71,7 +128,7 @@ struct CountdownOverviewView: View {
                 color: .blue
             )
             
-            ForEach(appState.courses.filter { $0.targetDate != nil }, id: \.id) { course in
+            ForEach(sortCourses(appState.courses.filter { $0.targetDate != nil }), id: \.id) { course in
                 CourseCountdownCard(course: course, appState: appState)
             }
         }

@@ -13,8 +13,7 @@ struct ContentView: View {
     @StateObject private var appState = AppState()
     @State private var showFolderPicker = false
     @State private var localSelectedCourseID: UUID? // Local state to prevent direct binding issues
-    @State private var showingCountdownSettings = false
-    @State private var showingCountdownOverview = false
+    @State private var showingCountdownCenter = false
 
     // MARK: Body
     var body: some View {
@@ -32,29 +31,24 @@ struct ContentView: View {
                 if !appState.courses.isEmpty {
                     ToolbarItemGroup(placement: .primaryAction) {
                         Button {
-                            showingCountdownOverview = true
+                            showingCountdownCenter = true
                         } label: {
                             Image(systemName: "calendar.badge.clock")
                         }
-                        .help("倒數計日概覽")
+                        .help("倒數中心")
                         
                         Button {
-                            showingCountdownSettings = true
+                            showingCountdownCenter = true
                         } label: {
                             Image(systemName: "gear")
                         }
-                        .help("倒數計日設定")
+                        .help("倒數中心")
                         .disabled(localSelectedCourseID == nil)
                     }
                 }
             }
-            .sheet(isPresented: $showingCountdownSettings) {
-                if let selectedCourseID = localSelectedCourseID {
-                    CountdownSettingsSheet(appState: appState, courseID: selectedCourseID, isPresented: $showingCountdownSettings)
-                }
-            }
-            .sheet(isPresented: $showingCountdownOverview) {
-                CountdownOverviewSheet(appState: appState, isPresented: $showingCountdownOverview)
+            .sheet(isPresented: $showingCountdownCenter) {
+                CountdownCenterView(appState: appState, initialSelectedCourseID: localSelectedCourseID)
             }
             .fileImporter(isPresented: $showFolderPicker, allowedContentTypes: [.folder], allowsMultipleSelection: false) { result in
                 Task {
