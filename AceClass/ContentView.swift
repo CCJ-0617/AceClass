@@ -59,7 +59,7 @@ struct ContentView: View {
             // 依賴 isFullScreen 和 player 來決定是否顯示全螢幕播放器
             if appState.isVideoPlayerFullScreen, let player = appState.player {
                 // 傳遞共享的播放器實例給全螢幕 View
-                FullScreenVideoPlayerView(player: player, onToggleFullScreen: appState.toggleFullScreen)
+                FullScreenVideoPlayerView(player: player, onToggleFullScreen: appState.toggleFullScreen, showCaptions: appState.showCaptions, captionSegments: appState.captionsForCurrentVideo)
             }
         }
     }

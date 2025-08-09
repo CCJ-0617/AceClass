@@ -48,12 +48,22 @@ class AppState: ObservableObject {
         }
     }
     @Published var isVideoPlayerFullScreen = false
+    @Published var showCaptions: Bool = false
+    @Published var captionsForCurrentVideo: [CaptionSegment] = []
+    @Published var captionError: String? = nil
+    @Published var captionLoading: Bool = false // NEW: loading state
     @Published var sourceFolderURL: URL?
+    @Published var resumeOverlayText: String? // 顯示「從上次位置續播」提示
 
     // MARK: - Private Properties
     private let bookmarkKey = "selectedFolderBookmark"
     private var securityScopedURL: URL? // 持有主資料夾的安全作用域存取權
     private var currentlyAccessedVideoURL: URL? // 持有當前播放影片的獨立安全作用域存取權
+    private var timeObserverToken: Any? // NEW periodic time observer token
+    private let playbackProgressAutoMarkThreshold: Double = 0.75 // 75%
+    private let playbackPeriodicUpdateInterval: CMTime = CMTime(seconds: 5, preferredTimescale: 600) // every ~5s
+    private var playbackDebounceTask: Task<Void, Never>? // 續播位置寫入 debounce
+    private let playbackDebounceInterval: TimeInterval = 12 // 秒
 
     // MARK: - Computed Properties
     var selectedCourse: Course? {
@@ -100,16 +110,67 @@ class AppState: ObservableObject {
         }
     }
 
+    @MainActor
+    private func handlePlaybackPeriodicUpdate(time: CMTime, player: AVPlayer) {
+        guard let courseIndex = self.selectedCourseIndex,
+              let cv = self.currentVideo,
+              let videoIndex = self.courses[courseIndex].videos.firstIndex(where: { $0.id == cv.id }) else { return }
+        let currentSeconds = time.seconds
+        if currentSeconds.isFinite && currentSeconds >= 0 {
+            // Update last playback position in model (threshold 2s)
+            if self.courses[courseIndex].videos[videoIndex].lastPlaybackPosition == nil || abs((self.courses[courseIndex].videos[videoIndex].lastPlaybackPosition ?? 0) - currentSeconds) > 2 {
+                self.courses[courseIndex].videos[videoIndex].lastPlaybackPosition = currentSeconds
+                // Debounce saving position (no immediate disk write)
+                self.playbackDebounceTask?.cancel()
+                let courseID = self.courses[courseIndex].id
+                self.playbackDebounceTask = Task { [weak self] in
+                    do {
+                        try await Task.sleep(nanoseconds: UInt64(self?.playbackDebounceInterval ?? 12 * 1_000_000_000))
+                        await self?.saveVideos(for: courseID)
+                        print("💾 [DEBOUNCE] Saved playback position for course=\(courseID.uuidString.prefix(8)) at=\(currentSeconds)s")
+                    } catch { }
+                }
+            }
+            let duration = player.currentItem?.duration.seconds ?? 0
+            if duration > 0, currentSeconds / duration >= self.playbackProgressAutoMarkThreshold {
+                if self.courses[courseIndex].videos[videoIndex].watched == false {
+                    print("🎥 [AUTO-WATCH] Marking video as watched at progress \(currentSeconds/duration)")
+                    self.courses[courseIndex].videos[videoIndex].watched = true
+                    // Immediate save (override debounce)
+                    self.playbackDebounceTask?.cancel(); self.playbackDebounceTask = nil
+                    Task { await self.saveVideos(for: self.courses[courseIndex].id) }
+                }
+            }
+        }
+    }
+
+    @MainActor
+    private func flushPlaybackProgress() {
+        self.playbackDebounceTask?.cancel(); self.playbackDebounceTask = nil
+        if let courseID = self.selectedCourse?.id {
+            Task { await self.saveVideos(for: courseID) }
+        }
+    }
+
     // MARK: - Video & Player Logic
     @MainActor
     func selectVideo(_ video: VideoItem?) async {
         print("🎥 [DEBUG] selectVideo called with: \(video?.fileName ?? "nil")")
         print("🎥 [DEBUG] selectVideo - Running on @MainActor")
         
+        // Flush any pending debounce before switching
+        flushPlaybackProgress()
+        
         // If we're trying to select the same video, don't do anything
         if currentVideo?.id == video?.id {
             print("🎥 [DEBUG] selectVideo - Same video already selected, skipping")
             return
+        }
+        // Cleanup previous observer when switching videos
+        if let player = self.player, let token = timeObserverToken {
+            player.removeTimeObserver(token)
+            timeObserverToken = nil
+            print("🎥 [DEBUG] Removed previous time observer")
         }
         
         // 1. Stop accessing the previous video's resources.
@@ -124,6 +185,8 @@ class AppState: ObservableObject {
                 print("🎥 [DEBUG] Clearing video and player state")
                 self.currentVideo = nil
                 self.player = nil
+                self.captionsForCurrentVideo = []
+                self.captionError = nil
                 return
             }
 
@@ -141,16 +204,80 @@ class AppState: ObservableObject {
             // 4. Start security access and create the player.
             if sourceFolderURL.startAccessingSecurityScopedResource() {
                 let fileURL = course.folderURL.appendingPathComponent(videoToPlay.fileName)
-                
-                // 5. Create the player and update the state.
                 print("🎥 [DEBUG] Creating AVPlayer for: \(fileURL.path)")
                 let newPlayer = AVPlayer(url: fileURL)
                 self.player = newPlayer
+                // Setup resume logic after player item is ready
+                if let savedPosition = videoToPlay.lastPlaybackPosition, savedPosition > 5 { // skip very small
+                    let seekTime = CMTime(seconds: savedPosition, preferredTimescale: 600)
+                    // Async load duration then seek; UI updates on MainActor
+                    Task { [weak self, weak newPlayer] in
+                        guard let self = self, let newPlayer = newPlayer, let asset = newPlayer.currentItem?.asset else { return }
+                        do {
+                            let duration = try await asset.load(.duration)
+                            let durationSeconds = duration.seconds
+                            if durationSeconds > 0, savedPosition < durationSeconds * 0.95 {
+                                await MainActor.run {
+                                    newPlayer.seek(to: seekTime, toleranceBefore: .zero, toleranceAfter: .zero)
+                                    let mm = Int(savedPosition) / 60; let ss = Int(savedPosition) % 60
+                                    self.resumeOverlayText = String(format: "從上次位置續播 %02d:%02d", mm, ss)
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in self?.resumeOverlayText = nil }
+                                    print("🎥 [RESUME] Seeked to saved position: \(savedPosition)s (duration=\(durationSeconds)s)")
+                                }
+                            }
+                        } catch {
+                            print("🎥 [RESUME] Failed to load duration asynchronously: \(error)")
+                        }
+                    }
+                }
                 self.player?.play()
-                await self.markVideoAsWatched(videoToPlay)
-                
-                // We keep the access to the parent folder open while the player might need it.
-                // It will be closed when the next video is selected or the app closes.
+                // Setup periodic observer for position + auto-mark
+                if timeObserverToken == nil, let player = self.player {
+                    timeObserverToken = player.addPeriodicTimeObserver(forInterval: playbackPeriodicUpdateInterval, queue: .main) { [weak self, weak player] time in
+                        guard let self = self, let player = player else { return }
+                        Task { @MainActor [weak self, weak player] in
+                            guard let self = self, let player = player else { return }
+                            self.handlePlaybackPeriodicUpdate(time: time, player: player)
+                        }
+                    }
+                    print("🎥 [DEBUG] Added periodic time observer for playback tracking")
+                }
+                // Reset caption states
+                self.captionsForCurrentVideo = []
+                self.captionError = nil
+                self.captionLoading = true
+                if !self.showCaptions { self.showCaptions = true }
+                Task.detached { [weak self] in
+                    guard let self = self else { return }
+                    do {
+                        let status = await LocalTranscriptionService.shared.requestAuthorization()
+                        guard status == .authorized else {
+                            print("🗣️ [CAPTION] Speech not authorized: \(status.rawValue)")
+                            await MainActor.run {
+                                self.captionError = "字幕不可用"
+                                self.captionLoading = false
+                            }
+                            return
+                        }
+                        let segments = try await LocalTranscriptionService.shared.transcribe(url: fileURL, locales: ["zh-Hant", "zh-TW", "en-US"])
+                        await MainActor.run {
+                            self.captionLoading = false
+                            if segments.isEmpty {
+                                self.captionError = "字幕不可用"
+                            } else {
+                                self.captionsForCurrentVideo = segments
+                                self.captionError = nil
+                            }
+                        }
+                        print("🗣️ [CAPTION] Generated \(segments.count) segments (multi-locale)")
+                    } catch {
+                        print("🗣️ [CAPTION] Transcription failed: \(error.localizedDescription)")
+                        await MainActor.run {
+                            self.captionLoading = false
+                            self.captionError = "字幕不可用"
+                        }
+                    }
+                }
                 self.currentlyAccessedVideoURL = sourceFolderURL
             } else {
                 print("Failed to start security-scoped access for the source folder.")
@@ -159,26 +286,8 @@ class AppState: ObservableObject {
 
     @MainActor
     private func markVideoAsWatched(_ video: VideoItem) async {
-        print("✅ [DEBUG] markVideoAsWatched called for: \(video.fileName)")
-        // Use asyncAfter to ensure we're completely outside the current update cycle
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.001) { [weak self] in
-            guard let self = self else { return }
-            Task { @MainActor in
-                print("✅ [DEBUG] Processing markVideoAsWatched in delayed Task for: \(video.fileName)")
-                guard let courseIndex = self.selectedCourseIndex,
-                      let videoIndex = self.courses[courseIndex].videos.firstIndex(where: { $0.id == video.id }),
-                      !self.courses[courseIndex].videos[videoIndex].watched else {
-                    print("✅ [DEBUG] Video already watched or not found: \(video.fileName)")
-                    return
-                }
-                
-                print("✅ [DEBUG] Marking video as watched: \(video.fileName)")
-                self.courses[courseIndex].videos[videoIndex].watched = true
-                
-                // Save the changes in the background
-                await self.saveVideos(for: self.courses[courseIndex].id)
-            }
-        }
+        // deprecated in favor of observer-based auto mark; keep for manual calls if needed
+        print("✅ [DEBUG] (Deprecated immediate) markVideoAsWatched called for: \(video.fileName)")
     }
 
     func toggleFullScreen() {

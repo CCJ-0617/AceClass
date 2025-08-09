@@ -43,11 +43,13 @@ struct VideoPlayerView: View {
         ZStack(alignment: .bottomTrailing) {
             // Use the shared player directly from appState
             if let player = appState.player {
-                #if os(macOS)
+#if os(macOS)
                 AVPlayerViewRepresentable(player: player)
-                #else
+                    .frame(minWidth: 1, minHeight: 1)
+#else
                 VideoPlayer(player: player)
-                #endif
+                    .frame(minWidth: 1, minHeight: 1)
+#endif
             } else {
                 // Display a loading indicator if a video is selected but the player isn't ready yet
                 // Otherwise, show the placeholder text.
@@ -66,8 +68,51 @@ struct VideoPlayerView: View {
                 .background(Color.black)
                 .edgesIgnoringSafeArea(.all)
             }
-
-            // 全螢幕切換按鈕
+            
+            // 字幕顯示層（置於播放器上方）
+            if let player = appState.player, appState.showCaptions {
+                if !appState.captionsForCurrentVideo.isEmpty {
+                    CaptionOverlayView(player: player, segments: appState.captionsForCurrentVideo)
+                        .allowsHitTesting(false)
+                        .padding(.bottom, 38)
+                } else if appState.captionLoading {
+                    VStack { Spacer(); Text("字幕載入中…")
+                            .font(.custom("Songti TC", size: 16).weight(.semibold))
+                            .foregroundColor(.white)
+                            .shadow(color: .black.opacity(0.8), radius: 6, x: 0, y: 2)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(Color.black.opacity(0.35))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .padding(.bottom, 50)
+                    }.allowsHitTesting(false)
+                } else if let err = appState.captionError {
+                    VStack { Spacer(); Text(err.isEmpty ? "字幕不可用" : err)
+                            .font(.custom("Songti TC", size: 16).weight(.semibold))
+                            .foregroundColor(.white)
+                            .shadow(color: .black.opacity(0.8), radius: 6, x: 0, y: 2)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(Color.black.opacity(0.35))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .padding(.bottom, 50)
+                    }.allowsHitTesting(false)
+                } else {
+                    // Captions enabled but empty and not loading -> show unavailable
+                    VStack { Spacer(); Text("字幕不可用")
+                            .font(.custom("Songti TC", size: 16).weight(.semibold))
+                            .foregroundColor(.white)
+                            .shadow(color: .black.opacity(0.8), radius: 6, x: 0, y: 2)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(Color.black.opacity(0.35))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .padding(.bottom, 50)
+                    }.allowsHitTesting(false)
+                }
+            }
+            
+            // 控制按鈕群
             Button(action: {
                 withAnimation {
                     isFullScreen.toggle()
@@ -86,42 +131,103 @@ struct VideoPlayerView: View {
             }
             .buttonStyle(.plain)
             .padding()
+            
+            // 字幕開關
+            VStack {
+                Spacer()
+                HStack {
+                    Spacer()
+                    Toggle(isOn: $appState.showCaptions) {
+                        Image(systemName: appState.showCaptions ? "captions.bubble.fill" : "captions.bubble")
+                            .foregroundColor(.white)
+                    }
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+                    .padding(.trailing, 56)
+                    .padding(.bottom, 10)
+                }
+            }
+            
+            // Resume overlay text
+            if let overlay = appState.resumeOverlayText {
+                VStack { Spacer(); HStack { Spacer(); Text(overlay)
+                        .font(.caption.bold())
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Color.black.opacity(0.55))
+                        .foregroundColor(.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .padding(12)
+                }}.transition(.opacity).animation(.easeInOut(duration: 0.3), value: appState.resumeOverlayText)
+            }
         }
     }
 }
 
-// 2. 用於全螢幕模式的影片播放器
+// 2. 用於全螢幕模式的影片播放器 (top-level)
 struct FullScreenVideoPlayerView: View {
     let player: AVPlayer
     let onToggleFullScreen: () -> Void
-
+    var showCaptions: Bool = false
+    var captionSegments: [CaptionSegment] = []
+    
     var body: some View {
         ZStack(alignment: .topTrailing) {
-            // 播放器背景設為黑色並忽略安全區域
-            Color.black
-                .edgesIgnoringSafeArea(.all)
-            
-            #if os(macOS)
-            AVPlayerViewRepresentable(player: player)
-            #else
-            VideoPlayer(player: player)
-            #endif
-
-            // 退出全螢幕按鈕
+            Color.black.edgesIgnoringSafeArea(.all)
+#if os(macOS)
+            AVPlayerViewRepresentable(player: player).frame(minWidth: 1, minHeight: 1)
+#else
+            VideoPlayer(player: player).frame(minWidth: 1, minHeight: 1)
+#endif
+            if showCaptions {
+                CaptionOverlayView(player: player, segments: captionSegments).allowsHitTesting(false)
+            }
             Button(action: onToggleFullScreen) {
                 Image(systemName: "arrow.down.right.and.arrow.up.left")
                     .font(.title3.weight(.bold))
                     .foregroundColor(.white)
                     .padding(12)
-                    .background(
-                        Color.black.opacity(0.35)
-                            .background(.thinMaterial)
-                            .clipShape(Circle())
-                    )
+                    .background(Color.black.opacity(0.35).background(.thinMaterial).clipShape(Circle()))
                     .shadow(radius: 4, y: 2)
             }
             .buttonStyle(.plain)
             .padding()
+        }
+    }
+}
+
+// MARK: - Caption Overlay (top-level)
+struct CaptionOverlayView: View {
+    let player: AVPlayer
+    let segments: [CaptionSegment]
+    @State private var currentText: String = ""
+    private let timer = Timer.publish(every: 0.2, on: .main, in: .common).autoconnect()
+    
+    var body: some View {
+        VStack {
+            Spacer()
+            if !currentText.isEmpty {
+                Text(currentText)
+                    .font(.system(size: 16, weight: .semibold, design: .rounded))
+                    .foregroundColor(.white)
+                    .shadow(color: .black.opacity(0.8), radius: 6, x: 0, y: 2)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(Color.black.opacity(0.35))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .padding(.bottom, 12)
+            }
+        }
+        .onReceive(timer) { _ in updateText() }
+    }
+    
+    private func updateText() {
+        guard let item = player.currentItem else { return }
+        let time = CMTimeGetSeconds(item.currentTime())
+        if let seg = segments.first(where: { time >= $0.start && time <= ($0.start + $0.duration) }) {
+            if seg.text != currentText { currentText = seg.text }
+        } else if !currentText.isEmpty {
+            currentText = ""
         }
     }
 }

@@ -7,14 +7,16 @@ struct VideoItem: Identifiable, Codable {
     var note: String             // 註解
     var watched: Bool            // 是否已看
     let date: Date?              // 從檔名解析出的日期
+    var lastPlaybackPosition: Double? // 最後播放位置（秒）
     
-    init(fileName: String, displayName: String? = nil, note: String = "", watched: Bool = false) {
+    init(fileName: String, displayName: String? = nil, note: String = "", watched: Bool = false, lastPlaybackPosition: Double? = nil) {
         self.id = UUID()
         self.fileName = fileName
         self.displayName = displayName ?? fileName
         self.note = note.isEmpty ? fileName : note // 如果註解為空，則預設為檔名
         self.watched = watched
         self.date = Self.extractDate(from: fileName) // 初始化時自動解析日期
+        self.lastPlaybackPosition = lastPlaybackPosition
     }
     
     // 增加一個靜態方法來解析日期，使其在初始化時就能被呼叫
@@ -55,7 +57,7 @@ struct VideoItem: Identifiable, Codable {
     
     // 為了讓 Codable 能正確運作，我們需要自訂編碼和解碼過程
     enum CodingKeys: String, CodingKey {
-        case id, fileName, displayName, note, watched, date
+        case id, fileName, displayName, note, watched, date, lastPlaybackPosition
     }
     
     init(from decoder: Decoder) throws {
@@ -67,6 +69,7 @@ struct VideoItem: Identifiable, Codable {
         watched = try container.decode(Bool.self, forKey: .watched)
         // 如果解碼時 date 不存在（舊資料），則重新解析一次
         date = try container.decodeIfPresent(Date.self, forKey: .date) ?? Self.extractDate(from: fileName)
+        lastPlaybackPosition = try container.decodeIfPresent(Double.self, forKey: .lastPlaybackPosition)
     }
     
     func encode(to encoder: Encoder) throws {
@@ -77,6 +80,7 @@ struct VideoItem: Identifiable, Codable {
         try container.encode(note, forKey: .note)
         try container.encode(watched, forKey: .watched)
         try container.encode(date, forKey: .date)
+        try container.encodeIfPresent(lastPlaybackPosition, forKey: .lastPlaybackPosition)
     }
 }
 
