@@ -14,6 +14,7 @@ struct ContentView: View {
     @State private var showFolderPicker = false
     @State private var localSelectedCourseID: UUID? // Local state to prevent direct binding issues
     @State private var showingCountdownCenter = false
+    @State private var showingDebugConsole = false
 
     // MARK: Body
     var body: some View {
@@ -30,6 +31,12 @@ struct ContentView: View {
             .toolbar {
                 if !appState.courses.isEmpty {
                     ToolbarItemGroup(placement: .primaryAction) {
+                        Button {
+                            showingDebugConsole = true
+                        } label: {
+                            Image(systemName: "ladybug")
+                        }
+                        .help("偵錯主控台")
                         Button {
                             showingCountdownCenter = true
                         } label: {
@@ -49,6 +56,9 @@ struct ContentView: View {
             }
             .sheet(isPresented: $showingCountdownCenter) {
                 CountdownCenterView(appState: appState, initialSelectedCourseID: localSelectedCourseID)
+            }
+            .sheet(isPresented: $showingDebugConsole) {
+                DebugConsoleView()
             }
             .fileImporter(isPresented: $showFolderPicker, allowedContentTypes: [.folder], allowsMultipleSelection: false) { result in
                 Task {
@@ -171,7 +181,7 @@ struct ContentView: View {
                                     video: $video,
                                     isPlaying: appState.currentVideo?.id == video.id,
                                     playAction: { 
-                                        await appState.selectVideo(video) 
+                                        appState.scheduleSelectVideo(video)
                                     },
                                     saveAction: { 
                                         await appState.saveVideos(for: course.id)
@@ -219,7 +229,7 @@ struct ContentView: View {
                     course: course,
                     unwatchedVideos: unwatched,
                     playUnwatchedVideoAction: { video in
-                        await appState.selectVideo(video)
+                        appState.scheduleSelectVideo(video)
                     }
                 )
             } else {

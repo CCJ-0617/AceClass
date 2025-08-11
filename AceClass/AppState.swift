@@ -7,27 +7,27 @@ class AppState: ObservableObject {
     // MARK: - Published Properties
     @Published var courses: [Course] = [] {
         didSet {
-            print("🚨 [PUBLISH DEBUG] courses changed: \(oldValue.count) -> \(courses.count)")
-            print("🚨 [PUBLISH DEBUG] courses changed in @MainActor context")
+            ACLog("courses changed: \(oldValue.count) -> \(courses.count)", level: .debug)
+            ACLog("courses changed in @MainActor context", level: .trace)
         }
     }
     @Published var selectedCourseID: UUID? {
         didSet {
             if oldValue != selectedCourseID {
-                print("🔄 [DEBUG] selectedCourseID changed from \(oldValue?.uuidString.prefix(8) ?? "nil") to \(selectedCourseID?.uuidString.prefix(8) ?? "nil")")
+                ACLog("selectedCourseID changed from \(oldValue?.uuidString.prefix(8) ?? "nil") to \(selectedCourseID?.uuidString.prefix(8) ?? "nil")", level: .debug)
                 // Schedule the change processing to avoid publishing during view updates.
                 // Use asyncAfter to ensure we're completely outside the current update cycle.
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.001) { [weak self] in
                     guard let self = self else { return }
                     Task { @MainActor in
-                        print("🔄 [DEBUG] Processing selectedCourseID change in delayed Task")
+                        ACLog("Processing selectedCourseID change in delayed Task", level: .trace)
                         
                         // When the course changes, stop the current video playback.
                         await self.selectVideo(nil)
                         
                         // Load videos for the newly selected course if it doesn't have videos yet
                         if let course = self.selectedCourse, course.videos.isEmpty {
-                            print("🔄 [DEBUG] Loading videos for course: \(course.folderURL.lastPathComponent)")
+                            ACLog("Loading videos for course: \(course.folderURL.lastPathComponent)", level: .debug)
                             await self.loadVideos(for: course)
                         }
                     }
@@ -37,14 +37,14 @@ class AppState: ObservableObject {
     }
     @Published var currentVideo: VideoItem? {
         didSet {
-            print("🚨 [PUBLISH DEBUG] currentVideo changed: \(oldValue?.fileName ?? "nil") -> \(currentVideo?.fileName ?? "nil")")
-            print("🚨 [PUBLISH DEBUG] currentVideo changed in @MainActor context")
+            ACLog("currentVideo changed: \(oldValue?.fileName ?? "nil") -> \(currentVideo?.fileName ?? "nil")", level: .debug)
+            ACLog("currentVideo changed in @MainActor context", level: .trace)
         }
     }
     @Published var player: AVPlayer? {
         didSet {
-            print("🚨 [PUBLISH DEBUG] player changed: \(oldValue != nil ? "not nil" : "nil") -> \(player != nil ? "not nil" : "nil")")
-            print("🚨 [PUBLISH DEBUG] player changed in @MainActor context")
+            ACLog("player changed: \(oldValue != nil ? "not nil" : "nil") -> \(player != nil ? "not nil" : "nil")", level: .debug)
+            ACLog("player changed in @MainActor context", level: .trace)
         }
     }
     @Published var isVideoPlayerFullScreen = false
@@ -54,6 +54,9 @@ class AppState: ObservableObject {
     @Published var captionLoading: Bool = false // NEW: loading state
     @Published var sourceFolderURL: URL?
     @Published var resumeOverlayText: String? // 顯示「從上次位置續播」提示
+    @Published var captionsFeatureEnabled: Bool = false // 全域字幕功能開關（暫時停用字幕）
+    @Published var isInitializingPlayer: Bool = false // 影片播放器初始化狀態
+    @Published var enableVideoCaching: Bool = true // 小於閾值影片先複製到本地快取
 
     // MARK: - Private Properties
     private let bookmarkKey = "selectedFolderBookmark"
@@ -64,6 +67,16 @@ class AppState: ObservableObject {
     private let playbackPeriodicUpdateInterval: CMTime = CMTime(seconds: 5, preferredTimescale: 600) // every ~5s
     private var playbackDebounceTask: Task<Void, Never>? // 續播位置寫入 debounce
     private let playbackDebounceInterval: TimeInterval = 12 // 秒
+    // Debounce for rapid video selection to avoid churn causing benign cancellation errors
+    private var pendingVideoSelectionTask: Task<Void, Never>? = nil
+    private let videoSelectionDebounceInterval: TimeInterval = 0.15
+    private let videoSelectionDebounceIntervalWhileInitializing: TimeInterval = 0.3
+    // Observer for player item failure notifications
+    private var playerItemFailedObserver: NSObjectProtocol? = nil
+    // Diagnostics
+    private struct PlayerDiagnostics { var selectionRequests=0; var executedSelections=0; var playerInitSuccess=0; var playerInitFailure=0; var benignCancellations=0; var lastInitDuration: TimeInterval=0; var avgInitDuration: TimeInterval=0 }
+    private var diagnostics = PlayerDiagnostics()
+    private var currentInitStart: Date? = nil
 
     // MARK: - Computed Properties
     var selectedCourse: Course? {
@@ -84,16 +97,17 @@ class AppState: ObservableObject {
 
     deinit {
         // App 結束時，清理所有安全作用域存取權
+    if let obs = playerItemFailedObserver { NotificationCenter.default.removeObserver(obs) }
         if let url = currentlyAccessedVideoURL {
             url.stopAccessingSecurityScopedResource()
             currentlyAccessedVideoURL = nil
-            print("AppState deinit: 已停止影片檔案安全作用域存取")
+            ACLog("AppState deinit: 已停止影片檔案安全作用域存取", level: .info)
         }
         // Since we can't call actor-isolated methods from deinit, directly stop accessing the resource
         if let url = securityScopedURL {
             url.stopAccessingSecurityScopedResource()
             securityScopedURL = nil
-            print("AppState deinit: 已停止主資料夾安全作用域存取")
+            ACLog("AppState deinit: 已停止主資料夾安全作用域存取", level: .info)
         }
     }
 
@@ -101,11 +115,11 @@ class AppState: ObservableObject {
     
     /// Safely set selectedCourseID without triggering publishing during view updates
     func selectCourse(_ courseID: UUID?) {
-        print("🔄 [DEBUG] selectCourse called with: \(courseID?.uuidString.prefix(8) ?? "nil")")
+    ACLog("selectCourse called with: \(courseID?.uuidString.prefix(8) ?? "nil")", level: .debug)
         
         // Always defer the change to the next run loop to avoid publishing during view updates
         Task { @MainActor in
-            print("🔄 [DEBUG] Processing selectCourse in Task")
+            ACLog("Processing selectCourse in Task", level: .trace)
             self.selectedCourseID = courseID
         }
     }
@@ -127,14 +141,14 @@ class AppState: ObservableObject {
                     do {
                         try await Task.sleep(nanoseconds: UInt64(self?.playbackDebounceInterval ?? 12 * 1_000_000_000))
                         await self?.saveVideos(for: courseID)
-                        print("💾 [DEBOUNCE] Saved playback position for course=\(courseID.uuidString.prefix(8)) at=\(currentSeconds)s")
+                        ACLog("Saved playback position for course=\(courseID.uuidString.prefix(8)) at=\(currentSeconds)s", level: .info)
                     } catch { }
                 }
             }
             let duration = player.currentItem?.duration.seconds ?? 0
             if duration > 0, currentSeconds / duration >= self.playbackProgressAutoMarkThreshold {
                 if self.courses[courseIndex].videos[videoIndex].watched == false {
-                    print("🎥 [AUTO-WATCH] Marking video as watched at progress \(currentSeconds/duration)")
+                    ACLog("Marking video as watched at progress \(currentSeconds/duration)", level: .info)
                     self.courses[courseIndex].videos[videoIndex].watched = true
                     // Immediate save (override debounce)
                     self.playbackDebounceTask?.cancel(); self.playbackDebounceTask = nil
@@ -155,58 +169,111 @@ class AppState: ObservableObject {
     // MARK: - Video & Player Logic
     @MainActor
     func selectVideo(_ video: VideoItem?) async {
-        print("🎥 [DEBUG] selectVideo called with: \(video?.fileName ?? "nil")")
-        print("🎥 [DEBUG] selectVideo - Running on @MainActor")
+    ACLog("selectVideo called with: \(video?.fileName ?? "nil")", level: .debug)
+    ACLog("selectVideo - Running on @MainActor", level: .trace)
+
+    // Cancel any pending scheduled selection (since we are executing one now)
+    pendingVideoSelectionTask?.cancel(); pendingVideoSelectionTask = nil
+    diagnostics.executedSelections += 1
+    currentInitStart = Date()
+    isInitializingPlayer = true
         
         // Flush any pending debounce before switching
         flushPlaybackProgress()
         
         // If we're trying to select the same video, don't do anything
         if currentVideo?.id == video?.id {
-            print("🎥 [DEBUG] selectVideo - Same video already selected, skipping")
+            ACLog("selectVideo - Same video already selected, skipping", level: .trace)
             return
         }
         // Cleanup previous observer when switching videos
         if let player = self.player, let token = timeObserverToken {
             player.removeTimeObserver(token)
             timeObserverToken = nil
-            print("🎥 [DEBUG] Removed previous time observer")
+            ACLog("Removed previous time observer", level: .trace)
         }
+    // Remove failure observer from previous item if any
+    if let obs = playerItemFailedObserver { NotificationCenter.default.removeObserver(obs); playerItemFailedObserver = nil }
         
         // 1. Stop accessing the previous video's resources.
             if let previousURL = currentlyAccessedVideoURL {
                 previousURL.stopAccessingSecurityScopedResource()
                 currentlyAccessedVideoURL = nil
-                print("Stopped accessing previous video resource: \(previousURL.path)")
+                ACLog("Stopped accessing previous video resource: \(previousURL.path)", level: .trace)
             }
 
             // 2. If the video is deselected, clear the player and state.
             if video == nil {
-                print("🎥 [DEBUG] Clearing video and player state")
+                ACLog("Clearing video and player state", level: .debug)
                 self.currentVideo = nil
                 self.player = nil
                 self.captionsForCurrentVideo = []
                 self.captionError = nil
+                isInitializingPlayer = false
                 return
             }
 
             // 3. Set the current video and show a loading state.
-            print("🎥 [DEBUG] Setting currentVideo to: \(video?.fileName ?? "unknown")")
+            ACLog("Setting currentVideo to: \(video?.fileName ?? "unknown")", level: .debug)
             self.currentVideo = video
             self.player = nil
 
             guard let course = selectedCourse, let videoToPlay = video else { return }
             guard let sourceFolderURL = self.securityScopedURL else {
-                print("CRITICAL: Cannot play video because the main folder's security scope is missing.")
+                ACLog("Cannot play video because the main folder's security scope is missing.", level: .critical)
+                diagnostics.playerInitFailure += 1
+                finalizeInitDiagnostics(success: false)
                 return
             }
 
             // 4. Start security access and create the player.
             if sourceFolderURL.startAccessingSecurityScopedResource() {
-                let fileURL = course.folderURL.appendingPathComponent(videoToPlay.fileName)
-                print("🎥 [DEBUG] Creating AVPlayer for: \(fileURL.path)")
+                var fileURL = course.folderURL.appendingPathComponent(videoToPlay.fileName)
+                ACLog("Preparing video URL: \(fileURL.lastPathComponent)", level: .debug)
+                if enableVideoCaching {
+                    do {
+                        let cached = try await VideoCacheManager.shared.preparePlaybackURL(for: fileURL)
+                        if cached != fileURL {
+                            ACLog("Using cached local copy for playback: \(cached.lastPathComponent)", level: .info)
+                            fileURL = cached
+                        }
+                    } catch {
+                        ACLog("Cache prepare failed (use original): \(error.localizedDescription)", level: .warn)
+                    }
+                }
+                ACLog("Creating AVPlayer for: \(fileURL.path)", level: .debug)
                 let newPlayer = AVPlayer(url: fileURL)
                 self.player = newPlayer
+                let initSuccessMark: @Sendable () -> Void = { [weak self] in
+                    Task { @MainActor [weak self] in
+                        guard let self else { return }
+                        self.diagnostics.playerInitSuccess += 1
+                        self.finalizeInitDiagnostics(success: true)
+                    }
+                }
+                // Attach failure observer
+                if let item = newPlayer.currentItem {
+                    playerItemFailedObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemFailedToPlayToEndTime, object: item, queue: .main) { [weak self] note in
+                        Task { @MainActor [weak self] in
+                            guard let self else { return }
+                            if let err = note.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error {
+                                let ns = err as NSError
+                                if ns.domain == NSOSStatusErrorDomain && ns.code == -128 {
+                                    ACLog("Playback canceled (benign code -128) currentVideo=\(self.currentVideo?.fileName ?? "nil")", level: .trace)
+                                    self.diagnostics.benignCancellations += 1
+                                } else {
+                                    ACLog("Playback failed code=\(ns.code) domain=\(ns.domain) desc=\(err.localizedDescription)", level: .error)
+                                    self.diagnostics.playerInitFailure += 1
+                                }
+                                self.finalizeInitDiagnostics(success: false)
+                            } else {
+                                ACLog("Playback failed (no error info)", level: .error)
+                                self.diagnostics.playerInitFailure += 1
+                                self.finalizeInitDiagnostics(success: false)
+                            }
+                        }
+                    }
+                }
                 // Setup resume logic after player item is ready
                 if let savedPosition = videoToPlay.lastPlaybackPosition, savedPosition > 5 { // skip very small
                     let seekTime = CMTime(seconds: savedPosition, preferredTimescale: 600)
@@ -222,15 +289,16 @@ class AppState: ObservableObject {
                                     let mm = Int(savedPosition) / 60; let ss = Int(savedPosition) % 60
                                     self.resumeOverlayText = String(format: "從上次位置續播 %02d:%02d", mm, ss)
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in self?.resumeOverlayText = nil }
-                                    print("🎥 [RESUME] Seeked to saved position: \(savedPosition)s (duration=\(durationSeconds)s)")
+                                    ACLog("Seeked to saved position: \(savedPosition)s (duration=\(durationSeconds)s)", level: .info)
                                 }
                             }
                         } catch {
-                            print("🎥 [RESUME] Failed to load duration asynchronously: \(error)")
+                            ACLog("Failed to load duration asynchronously: \(error.localizedDescription)", level: .error)
                         }
                     }
                 }
                 self.player?.play()
+                initSuccessMark()
                 // Setup periodic observer for position + auto-mark
                 if timeObserverToken == nil, let player = self.player {
                     timeObserverToken = player.addPeriodicTimeObserver(forInterval: playbackPeriodicUpdateInterval, queue: .main) { [weak self, weak player] time in
@@ -240,54 +308,94 @@ class AppState: ObservableObject {
                             self.handlePlaybackPeriodicUpdate(time: time, player: player)
                         }
                     }
-                    print("🎥 [DEBUG] Added periodic time observer for playback tracking")
+                    ACLog("Added periodic time observer for playback tracking", level: .trace)
                 }
-                // Reset caption states
-                self.captionsForCurrentVideo = []
-                self.captionError = nil
-                self.captionLoading = true
-                if !self.showCaptions { self.showCaptions = true }
-                Task.detached { [weak self] in
-                    guard let self = self else { return }
-                    do {
-                        let status = await LocalTranscriptionService.shared.requestAuthorization()
-                        guard status == .authorized else {
-                            print("🗣️ [CAPTION] Speech not authorized: \(status.rawValue)")
+                if self.captionsFeatureEnabled {
+                    // Reset caption states only if feature enabled
+                    self.captionsForCurrentVideo = []
+                    self.captionError = nil
+                    self.captionLoading = true
+                    if !self.showCaptions { self.showCaptions = true }
+                    Task.detached { [weak self] in
+                        guard let self = self else { return }
+                        do {
+                            let status = await LocalTranscriptionService.shared.requestAuthorization()
+                            guard status == .authorized else {
+                                ACLog("Speech not authorized: \(status.rawValue)", level: .warn)
+                                await MainActor.run {
+                                    self.captionError = "字幕不可用"
+                                    self.captionLoading = false
+                                }
+                                return
+                            }
+                            let segments = try await LocalTranscriptionService.shared.transcribe(url: fileURL, locales: ["zh-Hant", "zh-TW", "en-US"])
                             await MainActor.run {
-                                self.captionError = "字幕不可用"
                                 self.captionLoading = false
+                                if segments.isEmpty {
+                                    self.captionError = "字幕不可用"
+                                } else {
+                                    self.captionsForCurrentVideo = segments
+                                    self.captionError = nil
+                                }
                             }
-                            return
-                        }
-                        let segments = try await LocalTranscriptionService.shared.transcribe(url: fileURL, locales: ["zh-Hant", "zh-TW", "en-US"])
-                        await MainActor.run {
-                            self.captionLoading = false
-                            if segments.isEmpty {
+                            ACLog("Generated \(segments.count) segments (multi-locale)", level: .info)
+                        } catch {
+                            ACLog("Transcription failed: \(error.localizedDescription)", level: .error)
+                            await MainActor.run {
+                                self.captionLoading = false
                                 self.captionError = "字幕不可用"
-                            } else {
-                                self.captionsForCurrentVideo = segments
-                                self.captionError = nil
                             }
-                        }
-                        print("🗣️ [CAPTION] Generated \(segments.count) segments (multi-locale)")
-                    } catch {
-                        print("🗣️ [CAPTION] Transcription failed: \(error.localizedDescription)")
-                        await MainActor.run {
-                            self.captionLoading = false
-                            self.captionError = "字幕不可用"
                         }
                     }
+                } else {
+                    // 功能停用：確保相關狀態清空且不顯示
+                    self.showCaptions = false
+                    self.captionsForCurrentVideo = []
+                    self.captionError = nil
+                    self.captionLoading = false
                 }
                 self.currentlyAccessedVideoURL = sourceFolderURL
             } else {
-                print("Failed to start security-scoped access for the source folder.")
+                ACLog("Failed to start security-scoped access for the source folder.", level: .error)
+                diagnostics.playerInitFailure += 1
+                finalizeInitDiagnostics(success: false)
             }
+    }
+
+    /// Debounced scheduling of video selection; coalesces rapid taps into the last one.
+    func scheduleSelectVideo(_ video: VideoItem?) {
+        ACLog("scheduleSelectVideo requested: \(video?.fileName ?? "nil")", level: .trace)
+        pendingVideoSelectionTask?.cancel()
+        diagnostics.selectionRequests += 1
+        pendingVideoSelectionTask = Task { [weak self] in
+            let interval = (self?.isInitializingPlayer == true) ? (self?.videoSelectionDebounceIntervalWhileInitializing ?? 0.3) : (self?.videoSelectionDebounceInterval ?? 0.15)
+            do { try await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000)) } catch { return }
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                Task { @MainActor in await self.selectVideo(video) }
+            }
+        }
+    }
+
+    // MARK: - Diagnostics helpers
+    private func finalizeInitDiagnostics(success: Bool) {
+        guard isInitializingPlayer else { return }
+        isInitializingPlayer = false
+        if let start = currentInitStart { diagnostics.lastInitDuration = Date().timeIntervalSince(start) }
+        // EWMA for average (alpha=0.3)
+        let alpha = 0.3
+        if diagnostics.avgInitDuration == 0 { diagnostics.avgInitDuration = diagnostics.lastInitDuration }
+        else { diagnostics.avgInitDuration = alpha*diagnostics.lastInitDuration + (1-alpha)*diagnostics.avgInitDuration }
+        logPlayerDiagnostics(context: success ? "init-success" : "init-end-failure")
+    }
+    private func logPlayerDiagnostics(context: String) {
+        ACLog("DIAG[\(context)] selReq=\(diagnostics.selectionRequests) exec=\(diagnostics.executedSelections) success=\(diagnostics.playerInitSuccess) fail=\(diagnostics.playerInitFailure) benignCancel=\(diagnostics.benignCancellations) lastInit=\(String(format: "%.3f", diagnostics.lastInitDuration))s avgInit=\(String(format: "%.3f", diagnostics.avgInitDuration))s", level: .trace)
     }
 
     @MainActor
     private func markVideoAsWatched(_ video: VideoItem) async {
         // deprecated in favor of observer-based auto mark; keep for manual calls if needed
-        print("✅ [DEBUG] (Deprecated immediate) markVideoAsWatched called for: \(video.fileName)")
+    ACLog("(Deprecated immediate) markVideoAsWatched called for: \(video.fileName)", level: .trace)
     }
 
     func toggleFullScreen() {
@@ -336,7 +444,7 @@ class AppState: ObservableObject {
     func handleFolderSelection(_ result: Result<[URL], Error>) async {
         switch result {
         case .success(let urls):
-            print("📁 [DEBUG] fileImporter returned \(urls.count) URL(s)")
+            ACLog("fileImporter returned \(urls.count) URL(s)", level: .debug)
             if let first = urls.first {
                 logURLDiagnostics(first, context: "fileImporter selection (pre-security-scope)")
             }
@@ -347,7 +455,7 @@ class AppState: ObservableObject {
 
             // Perform blocking file I/O and bookmarking on a background thread.
             Task.detached(priority: .userInitiated) {
-                print("📁 [DEBUG] Attempting startAccessingSecurityScopedResource on selected folder…")
+                ACLog("Attempting startAccessingSecurityScopedResource on selected folder…", level: .debug)
                 // Start security access to get permissions for the new folder.
                 guard folder.startAccessingSecurityScopedResource() else {
                     print("ERROR: Could not start security-scoped access for the newly selected folder.")
@@ -775,7 +883,7 @@ class AppState: ObservableObject {
                 let key = "course_metadata_\(courseID.uuidString)"
                 UserDefaults.standard.set(data, forKey: key)
                 
-                print("📅 [DEBUG] Course metadata saved for: \(courseID.uuidString.prefix(8))")
+                ACLog("Course metadata saved for: \(courseID.uuidString.prefix(8))", level: .info)
             } catch {
                 print("📅 [ERROR] Failed to save course metadata: \(error.localizedDescription)")
             }

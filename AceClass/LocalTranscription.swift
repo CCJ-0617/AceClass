@@ -75,18 +75,18 @@ final class LocalTranscriptionService {
             let chosenLocales = allowCloudFallback ? supportedLocales(from: requested) : onDeviceCapableLocales(from: requested)
             guard !chosenLocales.isEmpty else {
                 throw NSError(domain: "LocalTranscription", code: -3, userInfo: [NSLocalizedDescriptionKey: allowCloudFallback ? "無可用支援語系" : "無可用離線語系，且未啟用雲端 fallback"]) }
-            print("🗣️ [SPEECH] Requested locales=\(requested) -> using=\(chosenLocales) allowCloud=\(allowCloudFallback) sequential=true")
+            ACLog("SPEECH Requested locales=\(requested) -> using=\(chosenLocales) allowCloud=\(allowCloudFallback) sequential=true", level: .debug)
             var preparedOpt: AudioAnalysis? = nil
             do {
                 preparedOpt = try await prepareAudio(url: url)
                 if let p = preparedOpt {
-                    print("🎧 [AUDIO] duration=\(String(format: "%.2f", p.duration))s size=\(p.fileSize)B avgRMS=\(String(format: "%.1f", p.averageRMS))dBFS leadingSilence=\(String(format: "%.2f", p.leadingSilence))s")
+                    ACLog("AUDIO duration=\(String(format: "%.2f", p.duration))s size=\(p.fileSize)B avgRMS=\(String(format: "%.1f", p.averageRMS))dBFS leadingSilence=\(String(format: "%.2f", p.leadingSilence))s", level: .debug)
                     // NEW: explicit debug for original and prepared audio
                     self.debugAudioFile(url, label: "original.container after prepareAudio")
                     self.debugAudioFile(p.url, label: "prepared.pcm after prepareAudio")
                 }
             } catch {
-                print("🎧 [AUDIO] prepareAudio failed, will fallback to original container only: \(error.localizedDescription)")
+                ACLog("AUDIO prepareAudio failed, fallback to original container: \(error.localizedDescription)", level: .warn)
             }
             var all: [(String, [CaptionSegment])] = []
             for loc in chosenLocales { if Task.isCancelled { break }
@@ -94,7 +94,7 @@ final class LocalTranscriptionService {
                     let segs = try await transcribeSingleAudio(originalURL: url, prepared: preparedOpt, locale: loc)
                     all.append((loc, segs))
                 } catch {
-                    print("🗣️ [SPEECH] Locale \(loc) failed: \(error.localizedDescription)")
+                    ACLog("SPEECH locale \(loc) failed: \(error.localizedDescription)", level: .warn)
                 }
             }
             if Task.isCancelled { return [] }
@@ -110,7 +110,7 @@ final class LocalTranscriptionService {
         
         // Force segmentation immediately for ultra-long audio
         if let prepared = prepared, prepared.duration >= forceSegmentationDuration {
-            print("🗣️ [SPEECH] Force segmentation (duration=\(String(format: "%.1f", prepared.duration))) locale=\(locale)")
+            ACLog("SPEECH force segmentation duration=\(String(format: "%.1f", prepared.duration)) locale=\(locale)", level: .debug)
             let segmented = try await transcribeSegmented(locale: locale, analysis: prepared)
             if !segmented.isEmpty { return segmented }
             // If segmentation produced nothing, fall through to whole-file attempts (unlikely)
@@ -140,31 +140,31 @@ final class LocalTranscriptionService {
                     let ns2 = e2 as NSError
                     if (e2.localizedDescription.contains("No speech") || ns2.code == 203) && prepared.duration > 15 && prepared.leadingSilence > 0.5 {
                         let trimStart = max(0, prepared.leadingSilence - 0.2)
-                        print("🗣️ [SPEECH] Trim retry locale=\(locale) trimStart=\(String(format: "%.2f", trimStart))")
+                        ACLog("SPEECH trim retry locale=\(locale) trimStart=\(String(format: "%.2f", trimStart))", level: .debug)
                         if let trimmed = try? await trimAudio(prepared.url, start: trimStart) {
                             switch await attempt(trimmed, stage: "trimmed") {
                             case .success(let segs): wholeFileResult = segs.map { CaptionSegment(text: $0.text, start: $0.start + trimStart, duration: $0.duration) }
-                            case .failure(let etrim): print("🗣️ [SPEECH] Trim retry failed locale=\(locale) error=\(etrim.localizedDescription)")
+                            case .failure(let etrim): ACLog("SPEECH trim retry failed locale=\(locale) error=\(etrim.localizedDescription)", level: .warn)
                             }
                         }
                     }
                     if wholeFileResult.isEmpty && (e1.localizedDescription.contains("Cannot Open") || e2.localizedDescription.contains("Cannot Open") || ns1.domain == NSOSStatusErrorDomain || ns2.domain == NSOSStatusErrorDomain) {
-                        print("🗣️ [SPEECH] Fallback m4a export locale=\(locale)")
+                        ACLog("SPEECH fallback m4a export locale=\(locale)", level: .debug)
                         if let m4a = try? await exportToM4A(originalURL) {
                             switch await attempt(m4a, stage: "m4a") {
                             case .success(let segs): wholeFileResult = segs
-                            case .failure(let em4a): print("🗣️ [SPEECH] m4a fallback failed locale=\(locale) error=\(em4a.localizedDescription)")
+                            case .failure(let em4a): ACLog("SPEECH m4a fallback failed locale=\(locale) error=\(em4a.localizedDescription)", level: .warn)
                             }
                         }
                     }
                 }
             } else {
                 if e1.localizedDescription.contains("Cannot Open") || ns1.domain == NSOSStatusErrorDomain {
-                    print("🗣️ [SPEECH] Fallback m4a export (no prepared) locale=\(locale)")
+                    ACLog("SPEECH fallback m4a export (no prepared) locale=\(locale)", level: .debug)
                     if let m4a = try? await exportToM4A(originalURL) {
                         switch await attempt(m4a, stage: "m4a") {
                         case .success(let segs): wholeFileResult = segs
-                        case .failure(let em4a): print("🗣️ [SPEECH] m4a fallback failed locale=\(locale) error=\(em4a.localizedDescription)")
+                        case .failure(let em4a): ACLog("SPEECH m4a fallback failed locale=\(locale) error=\(em4a.localizedDescription)", level: .warn)
                         }
                     }
                 }
@@ -180,13 +180,13 @@ final class LocalTranscriptionService {
                 return false
             }()
             if needSegmentation {
-                print("🗣️ [SPEECH] Segmentation fallback triggered locale=\(locale) existingSegments=\(wholeFileResult.count) duration=\(String(format: "%.1f", prepared.duration))")
+                ACLog("SPEECH segmentation fallback triggered locale=\(locale) existing=\(wholeFileResult.count) duration=\(String(format: "%.1f", prepared.duration))", level: .debug)
                 do {
                     let segmented = try await transcribeSegmented(locale: locale, analysis: prepared)
                     if segmented.count > wholeFileResult.count { return segmented }
                     if wholeFileResult.isEmpty && segmented.isEmpty, let lastError = lastError { throw lastError }
                 } catch {
-                    print("🗣️ [SPEECH] Segmentation fallback failed locale=\(locale) error=\(error.localizedDescription)")
+                    ACLog("SPEECH segmentation fallback failed locale=\(locale) error=\(error.localizedDescription)", level: .warn)
                     if wholeFileResult.isEmpty, let lastError = lastError { throw lastError }
                 }
             }
@@ -197,17 +197,17 @@ final class LocalTranscriptionService {
     // MARK: Prepare audio (Option A: M4A-first export + analysis)
     private func prepareAudio(url: URL) async throws -> AudioAnalysis {
         if let cached = audioAnalysisCache[url], FileManager.default.fileExists(atPath: cached.url.path) { return cached }
-        print("🎧 [AUDIO] prepareAudio(M4A-first) start for \(url.lastPathComponent)")
+    ACLog("AUDIO prepareAudio start for \(url.lastPathComponent)", level: .debug)
         let lowerExt = url.pathExtension.lowercased()
         var baseURL: URL = url
         if !["m4a","caf","wav","aif","aiff"].contains(lowerExt) {
-            do { baseURL = try await exportToM4A(url); print("🎧 [AUDIO] exported M4A base=\(baseURL.lastPathComponent)") }
-            catch { print("🎧 [AUDIO] M4A export failed, fallback to original container for analysis error=\(error.localizedDescription)") }
+            do { baseURL = try await exportToM4A(url); ACLog("AUDIO exported M4A base=\(baseURL.lastPathComponent)", level: .debug) }
+            catch { ACLog("AUDIO M4A export failed, fallback to original container error=\(error.localizedDescription)", level: .warn) }
         }
         debugAudioFile(baseURL, label: "analysis.base start")
-        print("🎧 [AUDIO] analyzeAudio start")
+    ACLog("AUDIO analyzeAudio start", level: .trace)
         let analysis = try await analyzePCM(url: baseURL)
-        print("🎧 [AUDIO] analyzeAudio done rms=\(String(format: "%.1f", analysis.averageRMS)) leading=\(String(format: "%.2f", analysis.leadingSilence)) duration=\(String(format: "%.2f", analysis.duration))")
+    ACLog("AUDIO analyzeAudio done rms=\(String(format: "%.1f", analysis.averageRMS)) leading=\(String(format: "%.2f", analysis.leadingSilence)) duration=\(String(format: "%.2f", analysis.duration))", level: .debug)
         audioAnalysisCache[url] = analysis
         return analysis
     }
@@ -215,7 +215,7 @@ final class LocalTranscriptionService {
     // NEW: Segmentation + transcription for large or fallback paths
     private func transcribeSegmented(locale: String, analysis: AudioAnalysis) async throws -> [CaptionSegment] {
         let segments = try await segmentAudio(analysis.url, segmentLength: maxSegmentDuration, overlap: segmentOverlap)
-        print("🗣️ [SPEECH] Segment count=\(segments.count) locale=\(locale)")
+    ACLog("SPEECH segment count=\(segments.count) locale=\(locale)", level: .debug)
         var out: [CaptionSegment] = []
         for (segURL, baseStart) in segments {
             if Task.isCancelled { break }
@@ -225,7 +225,7 @@ final class LocalTranscriptionService {
                 let adjusted = segs.map { CaptionSegment(text: $0.text, start: $0.start + baseStart, duration: $0.duration) }
                 out.append(contentsOf: adjusted)
             } catch {
-                print("🗣️ [SPEECH] Segment failed offset=\(String(format: "%.2f", baseStart)) locale=\(locale) error=\(error.localizedDescription)")
+                ACLog("SPEECH segment failed offset=\(String(format: "%.2f", baseStart)) locale=\(locale) error=\(error.localizedDescription)", level: .warn)
             }
         }
         return coalesceContinuous(out.sorted { $0.start < $1.start })
@@ -286,7 +286,7 @@ final class LocalTranscriptionService {
     
     // Extract linear PCM CAF
     private func extractLinearPCMAudio(url: URL) async throws -> URL {
-        print("🎧 [AUDIO] Extracting PCM from \(url.lastPathComponent)")
+    ACLog("AUDIO extracting PCM from \(url.lastPathComponent)", level: .trace)
         if ["wav","caf","aif","aiff"].contains(url.pathExtension.lowercased()) { return url }
         let asset = AVURLAsset(url: url)
         let tracks = try await asset.loadTracks(withMediaType: .audio)
@@ -448,7 +448,7 @@ final class LocalTranscriptionService {
             let result = try await group.next()!
             group.cancelAll()
             let elapsed = Date().timeIntervalSince(start)
-            print("🗣️ [SPEECH] stage=\(stage) elapsed=\(String(format: "%.1f", elapsed))s segments=\(result.count)")
+            ACLog("SPEECH stage=\(stage) elapsed=\(String(format: "%.1f", elapsed))s segments=\(result.count)", level: .debug)
             return result
         }
     }
@@ -475,13 +475,13 @@ final class LocalTranscriptionService {
         let request = SFSpeechURLRecognitionRequest(url: url)
         if #available(macOS 12.0, iOS 13.0, *) { request.requiresOnDeviceRecognition = hasOnDevice && !allowCloudFallback }
         request.shouldReportPartialResults = false
-        print("🗣️ [SPEECH] Start transcription locale=\(localeIdentifier) onDevice=\(hasOnDevice) allowCloud=\(allowCloudFallback) url=\(url.lastPathComponent)")
+    ACLog("SPEECH start locale=\(localeIdentifier) onDevice=\(hasOnDevice) allowCloud=\(allowCloudFallback) url=\(url.lastPathComponent)", level: .info)
         return try await withCheckedThrowingContinuation { cont in
             let task = recognizer.recognitionTask(with: request) { result, error in
                 if let error = error { cont.resume(throwing: error); return }
                 guard let result = result, result.isFinal else { return }
                 let captions = result.bestTranscription.segments.map { seg in CaptionSegment(text: seg.substring, start: seg.timestamp, duration: seg.duration) }
-                print("🗣️ [SPEECH] Finished locale=\(localeIdentifier) segments=\(captions.count)")
+                ACLog("SPEECH finished locale=\(localeIdentifier) segments=\(captions.count)", level: .info)
                 cont.resume(returning: captions)
             }
             Task { if Task.isCancelled { task.finish() } }
@@ -559,9 +559,9 @@ final class LocalTranscriptionService {
                 let sr = af.processingFormat.sampleRate
                 lengthSeconds = Double(af.length) / max(1, sr)
             }
-            print("🎧 [AUDIO DEBUG] label=\(label) path=\(url.lastPathComponent) exists=\(FileManager.default.fileExists(atPath: url.path)) size=\(size)B duration=\(lengthSeconds < 0 ? "?" : String(format: "%.2f", lengthSeconds))s")
+            ACLog("AUDIO DEBUG label=\(label) path=\(url.lastPathComponent) exists=\(FileManager.default.fileExists(atPath: url.path)) size=\(size)B duration=\(lengthSeconds < 0 ? "?" : String(format: "%.2f", lengthSeconds))s", level: .trace)
         } catch {
-            print("🎧 [AUDIO DEBUG] label=\(label) path=\(url.lastPathComponent) error=\(error.localizedDescription)")
+            ACLog("AUDIO DEBUG label=\(label) path=\(url.lastPathComponent) error=\(error.localizedDescription)", level: .warn)
         }
     }
 }

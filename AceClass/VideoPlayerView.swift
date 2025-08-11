@@ -70,7 +70,7 @@ struct VideoPlayerView: View {
             }
             
             // 字幕顯示層（置於播放器上方）
-            if let player = appState.player, appState.showCaptions {
+            if let player = appState.player, appState.showCaptions, appState.captionsFeatureEnabled {
                 if !appState.captionsForCurrentVideo.isEmpty {
                     CaptionOverlayView(player: player, segments: appState.captionsForCurrentVideo)
                         .allowsHitTesting(false)
@@ -133,18 +133,20 @@ struct VideoPlayerView: View {
             .padding()
             
             // 字幕開關
-            VStack {
-                Spacer()
-                HStack {
+            if appState.captionsFeatureEnabled {
+                VStack {
                     Spacer()
-                    Toggle(isOn: $appState.showCaptions) {
-                        Image(systemName: appState.showCaptions ? "captions.bubble.fill" : "captions.bubble")
-                            .foregroundColor(.white)
+                    HStack {
+                        Spacer()
+                        Toggle(isOn: $appState.showCaptions) {
+                            Image(systemName: appState.showCaptions ? "captions.bubble.fill" : "captions.bubble")
+                                .foregroundColor(.white)
+                        }
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                        .padding(.trailing, 56)
+                        .padding(.bottom, 10)
                     }
-                    .toggleStyle(.switch)
-                    .labelsHidden()
-                    .padding(.trailing, 56)
-                    .padding(.bottom, 10)
                 }
             }
             

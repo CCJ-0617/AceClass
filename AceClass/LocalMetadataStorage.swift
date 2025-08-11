@@ -9,6 +9,9 @@ class LocalMetadataStorage {
     /// If true, the app will attempt to write metadata files to both local storage and external drives
     /// If false, metadata will only be stored locally
     static var shouldAttemptWriteToExternalDrives: Bool = true
+    static var disableExternalMetadataSync: Bool = false
+    private static var lastExternalCopyTime: Date = .distantPast
+    private static let externalCopyThrottle: TimeInterval = 30 // seconds between external copies per course
     
     /// Base directory for all AceClass metadata
     static let baseDirectory: URL = {
@@ -57,9 +60,9 @@ class LocalMetadataStorage {
             encoder.outputFormatting = .prettyPrinted
             let data = try encoder.encode(videos)
             try data.write(to: fileURL, options: .atomic)
-            print("成功將影片元數據儲存到本地: \(fileURL.path)")
+            ACLog("成功將影片元數據儲存到本地: \(fileURL.path)", level: .info)
         } catch {
-            print("儲存影片元數據到本地失敗: \(error.localizedDescription)")
+            ACLog("儲存影片元數據到本地失敗: \(error.localizedDescription)", level: .error)
         }
     }
     
@@ -86,9 +89,15 @@ class LocalMetadataStorage {
     ///   - courseID: The UUID of the course
     ///   - folderURL: The URL of the course folder on the external drive
     static func tryCopyMetadataToExternalLocation(for courseID: UUID, folderURL: URL) {
-        // Only proceed if writing to external drives is enabled
-        guard shouldAttemptWriteToExternalDrives else {
-            print("跳過複製到外部儲存裝置：寫入外部功能已停用")
+        // Only proceed if writing to external drives is enabled and not disabled globally
+        guard shouldAttemptWriteToExternalDrives, !disableExternalMetadataSync else {
+            ACLog("跳過複製到外部儲存裝置：功能關閉 (shouldAttemptWriteToExternalDrives=\(shouldAttemptWriteToExternalDrives) disableExternalMetadataSync=\(disableExternalMetadataSync))", level: .trace)
+            return
+        }
+        // Throttle frequency
+        let now = Date()
+        if now.timeIntervalSince(lastExternalCopyTime) < externalCopyThrottle {
+            ACLog("節流：距離上次外部複製不足 \(Int(externalCopyThrottle)) 秒，跳過", level: .trace)
             return
         }
         
@@ -97,7 +106,7 @@ class LocalMetadataStorage {
         
         // Only attempt to copy if local file exists
         guard FileManager.default.fileExists(atPath: localURL.path) else { 
-            print("本地元數據檔案不存在，跳過複製")
+            ACLog("本地元數據檔案不存在，跳過複製", level: .warn)
             return 
         }
         
@@ -109,10 +118,11 @@ class LocalMetadataStorage {
                 try FileManager.default.removeItem(at: externalURL)
             }
             try FileManager.default.copyItem(at: localURL, to: externalURL)
-            print("成功複製元數據到外部位置: \(externalURL.path)")
+            lastExternalCopyTime = Date()
+            ACLog("成功複製元數據到外部位置: \(externalURL.path)", level: .info)
         } catch {
-            print("複製元數據到外部位置失敗 (非關鍵錯誤): \(error.localizedDescription)")
-            print("這通常是因為權限問題或外部儲存裝置無法寫入")
+            ACLog("複製元數據到外部位置失敗 (非關鍵錯誤): \(error.localizedDescription)", level: .warn)
+            ACLog("這通常是因為權限問題或外部儲存裝置無法寫入", level: .trace)
         }
     }
 }

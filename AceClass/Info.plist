@@ -5,6 +5,6 @@
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.utilities</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>需要使用本機語音辨識以自動產生影片字幕（不會上傳到網路）。</string>
+	<string>需要使用語音辨識以自動產生影片字幕。</string>
 </dict>
 </plist>
