@@ -30,7 +30,7 @@ struct CountdownSettingsView: View {
                     .cornerRadius(12)
                     
                     // 課程狀態概覽
-                    if !appState.upcomingDeadlines.isEmpty || !appState.overdueCoures.isEmpty {
+                    if !appState.upcomingDeadlines.isEmpty || !appState.overdueCourses.isEmpty {
                         courseStatusSection
                             .padding()
                             .background(Color(.controlBackgroundColor))
@@ -182,7 +182,7 @@ struct CountdownSettingsView: View {
                 .font(.headline)
             
             let upcomingDeadlines = appState.upcomingDeadlines
-            let overdueCoures = appState.overdueCoures
+            let overdueCourses = appState.overdueCourses
             
             if !upcomingDeadlines.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
@@ -211,7 +211,7 @@ struct CountdownSettingsView: View {
                 }
             }
             
-            if !overdueCoures.isEmpty {
+            if !overdueCourses.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         Image(systemName: "exclamationmark.triangle.fill")
@@ -222,7 +222,7 @@ struct CountdownSettingsView: View {
                             .foregroundColor(.red)
                     }
                     
-                    ForEach(overdueCoures, id: \.id) { course in
+                    ForEach(overdueCourses, id: \.id) { course in
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(course.folderURL.lastPathComponent)
@@ -238,7 +238,7 @@ struct CountdownSettingsView: View {
                 }
             }
             
-            if upcomingDeadlines.isEmpty && overdueCoures.isEmpty {
+            if upcomingDeadlines.isEmpty && overdueCourses.isEmpty {
                 Text("目前沒有即將到期或過期的課程")
                     .foregroundColor(.secondary)
                     .italic()

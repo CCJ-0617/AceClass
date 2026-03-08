@@ -28,7 +28,17 @@ struct CountdownOverviewView: View {
                     }
                     .pickerStyle(.segmented)
                     
+<<<<<<< ours
                     Spacer()
+=======
+                    // 已過期的課程
+                    if !appState.overdueCourses.isEmpty {
+                        overdueCoursesSection
+                    }
+                    
+                    // 所有有設定目標日期的課程
+                    allCoursesWithTargetsSection
+>>>>>>> theirs
                     
                     Picker("排序", selection: $sort) {
                         ForEach(Sort.allCases) { s in Text(s.rawValue).tag(s) }
@@ -108,12 +118,20 @@ struct CountdownOverviewView: View {
         VStack(alignment: .leading, spacing: 12) {
             SectionHeader(
                 title: "已過期",
-                subtitle: "\(appState.overdueCoures.count) 個課程",
+                subtitle: "\(appState.overdueCourses.count) 個課程",
                 icon: "exclamationmark.triangle.fill",
                 color: .red
             )
             
+<<<<<<< ours
+<<<<<<< ours
             ForEach(sortCourses(appState.overdueCoures), id: \.id) { course in
+=======
+            ForEach(appState.overdueCourses, id: \.id) { course in
+>>>>>>> theirs
+=======
+            ForEach(appState.overdueCourses, id: \.id) { course in
+>>>>>>> theirs
                 CourseCountdownCard(course: course, appState: appState)
             }
         }

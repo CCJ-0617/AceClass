@@ -2,7 +2,7 @@
 
 一個專為 macOS 設計的 SwiftUI 補課影片管理應用程式的完整技術文檔。
 
-## 📋 目錄
+## 目錄
 
 1. [專案概覽](#專案概覽)
 2. [核心架構與設計](#核心架構與設計)
@@ -451,7 +451,7 @@ struct CountdownSettingsView: View {
                     .cornerRadius(12)
                 
                     // 課程狀態概覽
-                    if !appState.upcomingDeadlines.isEmpty || !appState.overdueCoures.isEmpty {
+                    if !appState.upcomingDeadlines.isEmpty || !appState.overdueCourses.isEmpty {
                         courseStatusSection
                             .padding()
                             .background(Color(.controlBackgroundColor))
@@ -1661,4 +1661,4 @@ jobs:
 
 ---
 
-> 💡 **提示**：如需使用指南和常見問題解答，請參考 `USER_GUIDE.md`
+> **提示**：如需使用指南和常見問題解答，請參考 `USER_GUIDE.md`
