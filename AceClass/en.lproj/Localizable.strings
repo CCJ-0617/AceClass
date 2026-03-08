@@ -24,6 +24,10 @@
 "countdown.center.set_target_date" = "Set target date";
 "countdown.center.show_only_targets" = "Only show courses with targets";
 "countdown.center.target_date" = "Target date";
+"countdown.center.description_label" = "Description";
+"countdown.center.no_target_hint" = "Toggle the switch above to set a target date for this course.";
+"countdown.center.quick_presets" = "Quick Presets";
+"countdown.center.sidebar_summary" = "%d courses, %d with targets";
 "countdown.center.target_description_placeholder" = "Target description (for example: final exam, homework deadline)";
 "countdown.center.title" = "Countdown Center";
 "countdown.due_today" = "Due today";

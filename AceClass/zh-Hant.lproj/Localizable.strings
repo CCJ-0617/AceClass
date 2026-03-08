@@ -24,6 +24,10 @@
 "countdown.center.set_target_date" = "設定目標日期";
 "countdown.center.show_only_targets" = "只顯示已設定目標";
 "countdown.center.target_date" = "目標日期";
+"countdown.center.description_label" = "描述";
+"countdown.center.no_target_hint" = "切換上方開關即可為此課程設定目標日期。";
+"countdown.center.quick_presets" = "快速設定";
+"countdown.center.sidebar_summary" = "共 %d 門課程，%d 門已設目標";
 "countdown.center.target_description_placeholder" = "目標描述（例如：期末考、作業截止）";
 "countdown.center.title" = "倒數中心";
 "countdown.due_today" = "今天到期";

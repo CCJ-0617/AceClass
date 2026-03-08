@@ -176,11 +176,15 @@ Supporting views:
 
 Countdown-related views:
 
-- [CountdownCenterView.swift](AceClass/CountdownCenterView.swift)
-- [CountdownSettingsView.swift](AceClass/CountdownSettingsView.swift)
-- [CountdownDisplay.swift](AceClass/CountdownDisplay.swift)
+- [CountdownCenterView.swift](AceClass/CountdownCenterView.swift) — unified panel with sidebar (search/filter/sort + course list) and detail editor; includes overview summary when no course is selected
+- [CountdownDisplay.swift](AceClass/CountdownDisplay.swift) — reusable D-day badge component
 
-The current primary editor flow is the Countdown Center sheet.
+Shared helpers defined in `CountdownCenterView.swift`:
+- `CountdownSort` / `CountdownFilter` — shared enums for sorting and filtering
+- `CountdownStatus` — extracts the overdue/urgent/normal 3-state pattern into a single enum used by both `CountdownDisplay` and sidebar rows
+- `CourseDeadlineEditor` — inline editor with date picker, quick presets, and live preview
+
+The Countdown Center is opened from the toolbar as a sheet.
 
 ## Playback Pipeline
 

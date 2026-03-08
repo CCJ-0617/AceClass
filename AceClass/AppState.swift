@@ -325,6 +325,12 @@ class AppState: ObservableObject {
     ACLog("selectVideo called with: \(video?.fileName ?? "nil")", level: .debug)
     ACLog("selectVideo - Running on @MainActor", level: .trace)
 
+        // If we're trying to select the same video, don't do anything
+        if currentVideo?.id == video?.id && video != nil {
+            ACLog("selectVideo - Same video already selected, skipping", level: .trace)
+            return
+        }
+
     // Cancel any pending scheduled selection (since we are executing one now)
     pendingVideoSelectionTask?.cancel(); pendingVideoSelectionTask = nil
     diagnostics.executedSelections += 1
@@ -333,12 +339,6 @@ class AppState: ObservableObject {
         
         // Flush any pending debounce before switching
         flushPlaybackProgress()
-        
-        // If we're trying to select the same video, don't do anything
-        if currentVideo?.id == video?.id {
-            ACLog("selectVideo - Same video already selected, skipping", level: .trace)
-            return
-        }
         // Cleanup previous observer when switching videos
         if let player = self.player, let token = timeObserverToken {
             player.removeTimeObserver(token)
@@ -541,6 +541,11 @@ class AppState: ObservableObject {
 
     /// Debounced scheduling of video selection; coalesces rapid taps into the last one.
     func scheduleSelectVideo(_ video: VideoItem?) {
+        // Skip scheduling if the same video is already playing
+        if currentVideo?.id == video?.id && video != nil {
+            ACLog("scheduleSelectVideo - Same video already selected, skipping", level: .trace)
+            return
+        }
         ACLog("scheduleSelectVideo requested: \(video?.fileName ?? "nil")", level: .trace)
         pendingVideoSelectionTask?.cancel()
         diagnostics.selectionRequests += 1
@@ -1039,18 +1044,17 @@ class AppState: ObservableObject {
     /// 設定課程的目標日期和描述
     @MainActor
     func setTargetDate(for courseID: UUID, targetDate: Date?, description: String) async {
-        print("📅 [DEBUG] Setting target date for course: \(courseID.uuidString.prefix(8))")
+        ACLog("Setting target date for course: \(courseID.uuidString.prefix(8))", level: .debug)
         
         guard let courseIndex = courseIndex(for: courseID) else {
-            print("📅 [DEBUG] Course not found for setting target date")
+            ACLog("Course not found for setting target date", level: .warn)
             return
         }
         
         courses[courseIndex].targetDate = targetDate
         courses[courseIndex].targetDescription = description
         
-        print("📅 [DEBUG] Target date set: \(targetDate?.formatted(date: .abbreviated, time: .omitted) ?? "nil")")
-        print("📅 [DEBUG] Description: \(description)")
+        ACLog("Target date set: \(targetDate?.formatted(date: .abbreviated, time: .omitted) ?? "nil"), description: \(description)", level: .debug)
         
         // 保存課程數據
         await saveCourseMetadata(for: courseID)

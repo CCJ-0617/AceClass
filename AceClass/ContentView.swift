@@ -42,7 +42,6 @@ struct ContentView: View {
                             Image(systemName: "calendar.badge.clock")
                         }
                         .help(L10n.tr("toolbar.countdown_center"))
-                        .disabled(localSelectedCourseID == nil)
 
                         Button {
                             showingDebugConsole = true
@@ -526,41 +525,6 @@ struct EmptyStateCard: View {
         .padding(28)
         .frame(maxWidth: .infinity)
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-    }
-}
-
-struct CountdownOverviewSheet: View {
-    @ObservedObject var appState: AppState
-    @Binding var isPresented: Bool
-
-    var body: some View {
-        CountdownOverviewView(appState: appState)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(L10n.tr("common.close")) {
-                        isPresented = false
-                    }
-                }
-            }
-            .frame(minWidth: 700, minHeight: 600)
-    }
-}
-
-struct CountdownSettingsSheet: View {
-    @ObservedObject var appState: AppState
-    let courseID: UUID
-    @Binding var isPresented: Bool
-
-    var body: some View {
-        CountdownSettingsView(appState: appState, courseID: courseID)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(L10n.tr("common.close")) {
-                        isPresented = false
-                    }
-                }
-            }
-            .frame(minWidth: 600, minHeight: 500)
     }
 }
 
