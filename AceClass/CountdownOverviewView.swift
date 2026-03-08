@@ -6,36 +6,51 @@ struct CountdownOverviewView: View {
     @State private var sort: Sort = .byDays
 
     enum Filter: String, CaseIterable, Identifiable {
-        case all = "全部"
-        case upcoming = "即將到期"
-        case overdue = "已過期"
+        case all
+        case upcoming
+        case overdue
 
         var id: String { rawValue }
+
+        var localizedTitle: String {
+            switch self {
+            case .all: return L10n.tr("common.all")
+            case .upcoming: return L10n.tr("countdown.filter.upcoming")
+            case .overdue: return L10n.tr("countdown.filter.overdue")
+            }
+        }
     }
 
     enum Sort: String, CaseIterable, Identifiable {
-        case byDays = "依天數"
-        case byName = "依名稱"
+        case byDays
+        case byName
 
         var id: String { rawValue }
+
+        var localizedTitle: String {
+            switch self {
+            case .byDays: return L10n.tr("common.by_days")
+            case .byName: return L10n.tr("common.by_name")
+            }
+        }
     }
 
     var body: some View {
         NavigationView {
             VStack(spacing: 0) {
                 HStack(spacing: 12) {
-                    Picker("篩選", selection: $selection) {
+                    Picker(L10n.tr("common.filter"), selection: $selection) {
                         ForEach(Filter.allCases) { filter in
-                            Text(filter.rawValue).tag(filter)
+                            Text(filter.localizedTitle).tag(filter)
                         }
                     }
                     .pickerStyle(.segmented)
 
                     Spacer()
 
-                    Picker("排序", selection: $sort) {
+                    Picker(L10n.tr("common.sort"), selection: $sort) {
                         ForEach(Sort.allCases) { option in
-                            Text(option.rawValue).tag(option)
+                            Text(option.localizedTitle).tag(option)
                         }
                     }
                     .pickerStyle(.segmented)
@@ -47,8 +62,8 @@ struct CountdownOverviewView: View {
                     LazyVStack(spacing: 16) {
                         if selection == .upcoming || selection == .all, !upcomingCourses.isEmpty {
                             courseSection(
-                                title: "即將到期",
-                                subtitle: "\(upcomingCourses.count) 個課程",
+                                title: L10n.tr("countdown.overview.upcoming"),
+                                subtitle: L10n.tr("countdown.overview.course_count", upcomingCourses.count),
                                 icon: "clock.fill",
                                 color: .orange,
                                 courses: upcomingCourses
@@ -57,8 +72,8 @@ struct CountdownOverviewView: View {
 
                         if selection == .overdue || selection == .all, !overdueCourses.isEmpty {
                             courseSection(
-                                title: "已過期",
-                                subtitle: "\(overdueCourses.count) 個課程",
+                                title: L10n.tr("countdown.overview.overdue"),
+                                subtitle: L10n.tr("countdown.overview.course_count", overdueCourses.count),
                                 icon: "exclamationmark.triangle.fill",
                                 color: .red,
                                 courses: overdueCourses
@@ -67,8 +82,8 @@ struct CountdownOverviewView: View {
 
                         if selection == .all, !allCoursesWithTargets.isEmpty {
                             courseSection(
-                                title: "所有目標",
-                                subtitle: "\(allCoursesWithTargets.count) 個課程",
+                                title: L10n.tr("countdown.overview.all_targets"),
+                                subtitle: L10n.tr("countdown.overview.course_count", allCoursesWithTargets.count),
                                 icon: "calendar",
                                 color: .blue,
                                 courses: allCoursesWithTargets
@@ -81,7 +96,7 @@ struct CountdownOverviewView: View {
                     }
                     .padding()
                 }
-                .navigationTitle("倒數計日概覽")
+                .navigationTitle(L10n.tr("countdown.overview.title"))
                 .frame(minWidth: 500, minHeight: 400)
             }
         }
@@ -146,11 +161,11 @@ struct CountdownOverviewView: View {
                 .font(.system(size: 60))
                 .foregroundColor(.secondary)
 
-            Text("尚未設定任何倒數計日")
+            Text(L10n.tr("countdown.overview.empty_title"))
                 .font(.headline)
                 .foregroundColor(.secondary)
 
-            Text("前往課程頁面為課程設定目標日期，開始追蹤學習進度")
+            Text(L10n.tr("countdown.overview.empty_subtitle"))
                 .font(.body)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
@@ -239,7 +254,7 @@ struct CourseCountdownCard: View {
             }
 
             if let targetDate = course.targetDate {
-                Text("目標日期：\(targetDate.formatted(date: .abbreviated, time: .omitted))")
+                Text(L10n.tr("countdown.target_date_label", targetDate.formatted(date: .abbreviated, time: .omitted)))
                     .font(.caption2)
                     .foregroundColor(.secondary)
             }

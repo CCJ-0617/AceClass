@@ -8,6 +8,14 @@ final class VideoCacheManager {
     static let shared = VideoCacheManager()
     private init() { loadManifest() }
 
+    private final class UncheckedSendableBox<Value>: @unchecked Sendable {
+        let value: Value
+
+        init(_ value: Value) {
+            self.value = value
+        }
+    }
+
     // MARK: Configuration
     var enabled: Bool = true
     var maxItemSizeBytes: Int64 = 5 * 1024 * 1024 * 1024 // 5 GB
@@ -57,10 +65,12 @@ final class VideoCacheManager {
             try localFM.copyItem(atPath: srcPath, toPath: dstPath)
         }.value
         let entry = Entry(originalPath: key, cacheFileName: cacheFileName, fileSize: size, modTime: modDate.timeIntervalSince1970, lastAccess: Date().timeIntervalSince1970)
-        queue.async { [weak self] in
-            self?.manifest[key] = entry
-            self?.saveManifest()
-            self?.enforceSizeLimit()
+        let managerBox = UncheckedSendableBox(self)
+        queue.async {
+            let manager = managerBox.value
+            manager.manifest[key] = entry
+            manager.saveManifest()
+            manager.enforceSizeLimit()
         }
         return dest
     }
@@ -73,11 +83,13 @@ final class VideoCacheManager {
         return "\(base)_\(stamp)_\(size).\(ext)"
     }
     private func touchAccess(for key: String) {
-        queue.async { [weak self] in
-            guard let self, var e = self.manifest[key] else { return }
-            e.lastAccess = Date().timeIntervalSince1970
-            self.manifest[key] = e
-            self.saveManifest()
+        let managerBox = UncheckedSendableBox(self)
+        queue.async {
+            let manager = managerBox.value
+            guard var entry = manager.manifest[key] else { return }
+            entry.lastAccess = Date().timeIntervalSince1970
+            manager.manifest[key] = entry
+            manager.saveManifest()
         }
     }
     private func totalCacheSize() -> Int64 { manifest.values.reduce(0) { $0 + $1.fileSize } }

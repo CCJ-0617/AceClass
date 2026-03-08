@@ -50,23 +50,14 @@ struct VideoPlayerView: View {
                 VideoPlayer(player: player)
                     .frame(minWidth: 1, minHeight: 1)
 #endif
-            } else {
-                // Display a loading indicator if a video is selected but the player isn't ready yet
-                // Otherwise, show the placeholder text.
-                VStack {
-                    if appState.currentVideo != nil {
-                        ProgressView()
-                            .scaleEffect(1.5)
-                            .progressViewStyle(.circular)
-                    } else {
-                        Text("請選擇一部影片")
-                            .foregroundColor(.white)
-                            .padding()
-                    }
-                    Spacer()
+
+                if appState.isInitializingPlayer {
+                    playerLoadingOverlay
+                        .padding(24)
+                        .transition(.opacity)
                 }
-                .background(Color.black)
-                .edgesIgnoringSafeArea(.all)
+            } else {
+                playerPlaceholder
             }
             
             // 字幕顯示層（置於播放器上方）
@@ -76,7 +67,7 @@ struct VideoPlayerView: View {
                         .allowsHitTesting(false)
                         .padding(.bottom, 38)
                 } else if appState.captionLoading {
-                    VStack { Spacer(); Text("字幕載入中…")
+                    VStack { Spacer(); Text(L10n.tr("player.captions_loading"))
                             .font(.custom("Songti TC", size: 16).weight(.semibold))
                             .foregroundColor(.white)
                             .shadow(color: .black.opacity(0.8), radius: 6, x: 0, y: 2)
@@ -87,7 +78,7 @@ struct VideoPlayerView: View {
                             .padding(.bottom, 50)
                     }.allowsHitTesting(false)
                 } else if let err = appState.captionError {
-                    VStack { Spacer(); Text(err.isEmpty ? "字幕不可用" : err)
+                    VStack { Spacer(); Text(err.isEmpty ? L10n.tr("player.captions_unavailable") : err)
                             .font(.custom("Songti TC", size: 16).weight(.semibold))
                             .foregroundColor(.white)
                             .shadow(color: .black.opacity(0.8), radius: 6, x: 0, y: 2)
@@ -99,7 +90,7 @@ struct VideoPlayerView: View {
                     }.allowsHitTesting(false)
                 } else {
                     // Captions enabled but empty and not loading -> show unavailable
-                    VStack { Spacer(); Text("字幕不可用")
+                    VStack { Spacer(); Text(L10n.tr("player.captions_unavailable"))
                             .font(.custom("Songti TC", size: 16).weight(.semibold))
                             .foregroundColor(.white)
                             .shadow(color: .black.opacity(0.8), radius: 6, x: 0, y: 2)
@@ -163,6 +154,178 @@ struct VideoPlayerView: View {
                 }}.transition(.opacity).animation(.easeInOut(duration: 0.3), value: appState.resumeOverlayText)
             }
         }
+    }
+
+    private var playerPlaceholder: some View {
+        ZStack {
+            LinearGradient(
+                colors: [
+                    Color.black,
+                    Color.accentColor.opacity(0.18),
+                    Color.black.opacity(0.92)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .overlay {
+                Rectangle()
+                    .fill(.ultraThinMaterial.opacity(0.18))
+            }
+
+            VStack(spacing: 22) {
+                ZStack {
+                    Circle()
+                        .fill(Color.white.opacity(0.08))
+                        .frame(width: 84, height: 84)
+
+                    Image(systemName: placeholderIconName)
+                        .font(.system(size: 30, weight: .semibold))
+                        .foregroundStyle(Color.white.opacity(0.92))
+                }
+
+                VStack(spacing: 10) {
+                    Text(placeholderTitle)
+                        .font(.system(size: 26, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+
+                    Text(placeholderSubtitle)
+                        .font(.body)
+                        .foregroundStyle(.white.opacity(0.72))
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: 480)
+                }
+
+                if appState.currentVideo != nil {
+                    playerLoadingCard
+                        .frame(maxWidth: 520)
+                }
+            }
+            .padding(32)
+        }
+        .ignoresSafeArea()
+    }
+
+    private var playerLoadingOverlay: some View {
+        VStack {
+            Spacer()
+
+            playerLoadingCard
+                .frame(maxWidth: 460)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+    }
+
+    private var playerLoadingCard: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top, spacing: 14) {
+                ZStack {
+                    Circle()
+                        .fill((isLoadingFailure ? Color.red : Color.accentColor).opacity(0.18))
+                        .frame(width: 48, height: 48)
+
+                    if isLoadingFailure {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundStyle(.white)
+                    } else {
+                        ProgressView()
+                            .progressViewStyle(.circular)
+                            .tint(.white)
+                            .scaleEffect(0.92)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(appState.playerLoadingTitle ?? L10n.tr("player.loading.video"))
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(.white)
+
+                    if let video = appState.currentVideo {
+                        Text(video.resolvedTitle)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.white.opacity(0.86))
+                            .lineLimit(2)
+                    }
+
+                    if let detail = appState.playerLoadingDetail, !detail.isEmpty {
+                        Text(detail)
+                            .font(.caption)
+                            .foregroundStyle(.white.opacity(0.68))
+                            .lineLimit(2)
+                    }
+                }
+
+                Spacer(minLength: 0)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Capsule()
+                    .fill(
+                        LinearGradient(
+                            colors: [Color.accentColor, Color.white.opacity(0.9), Color.accentColor.opacity(0.8)],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(height: 6)
+
+                HStack(spacing: 8) {
+                    statusChip(icon: "externaldrive.fill.badge.checkmark", text: L10n.tr("player.status.check_source"))
+                    statusChip(icon: "play.rectangle.on.rectangle", text: L10n.tr("player.status.create_player"))
+                    if let resumeText = appState.currentVideo?.playbackPositionText {
+                        statusChip(icon: "clock.arrow.trianglehead.counterclockwise.rotate.90", text: resumeText)
+                    }
+                }
+            }
+        }
+        .padding(20)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.24))
+        )
+        .shadow(color: .black.opacity(0.18), radius: 18, y: 12)
+    }
+
+    private func statusChip(icon: String, text: String) -> some View {
+        Label(text, systemImage: icon)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.white.opacity(0.84))
+            .padding(.vertical, 6)
+            .padding(.horizontal, 10)
+            .background(Color.white.opacity(0.08), in: Capsule())
+    }
+
+    private var placeholderIconName: String {
+        if isLoadingFailure {
+            return "exclamationmark.triangle.fill"
+        }
+        if appState.currentVideo != nil {
+            return "play.circle.fill"
+        }
+        return "film.stack"
+    }
+
+    private var placeholderTitle: String {
+        if appState.currentVideo != nil {
+            return appState.playerLoadingTitle ?? L10n.tr("player.loading.video")
+        }
+        return L10n.tr("player.placeholder.select_video")
+    }
+
+    private var placeholderSubtitle: String {
+        if let detail = appState.playerLoadingDetail, !detail.isEmpty {
+            return detail
+        }
+        if let video = appState.currentVideo {
+            return L10n.tr("player.placeholder.loading_subtitle", video.resolvedTitle)
+        }
+        return L10n.tr("player.placeholder.idle_subtitle")
+    }
+
+    private var isLoadingFailure: Bool {
+        guard let title = appState.playerLoadingTitle else { return false }
+        return title == L10n.tr("player.loading.failed") || title == L10n.tr("player.loading.unable")
     }
 }
 

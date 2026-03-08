@@ -2,13 +2,13 @@
 
 ## What AceClass Does
 
-AceClass helps you organize recorded class videos on macOS. After you select a root folder, the app scans each child folder as a course, lists `.mp4` files, remembers what you watched, and lets you assign a target date to each course.
+AceClass helps you organize recorded class videos on macOS. After you select a root folder, the app scans each child folder as a course, lists supported video files such as `.mp4`, `.mov`, `.m4v`, `.mkv`, `.avi`, `.mpeg`, `.mts`, and `.3gp`, remembers what you watched, and lets you assign a target date to each course.
 
 ## System Requirements
 
 - macOS 15.4 or later
 - A folder structure where each course is stored in its own subfolder
-- `.mp4` video files
+- Video files in supported formats: `.mp4`, `.mov`, `.m4v`, `.mkv`, `.avi`, `.mpg`, `.mpeg`, `.mts`, `.m2ts`, `.ts`, `.3gp`, `.3g2`
 
 ## Recommended Folder Structure
 
@@ -45,7 +45,7 @@ Once a folder is selected, AceClass stores a security-scoped bookmark so it can 
 
 - The left sidebar shows every detected course folder.
 - Select a course to load its video list.
-- If no videos appear, verify that the folder contains `.mp4` files.
+- If no videos appear, verify that the folder contains one of the supported video formats.
 
 ### Play Videos
 

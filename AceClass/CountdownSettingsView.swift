@@ -39,11 +39,11 @@ struct CountdownSettingsView: View {
                 }
                 .padding()
             }
-            .navigationTitle("倒數計日")
+            .navigationTitle(L10n.tr("countdown.settings.title"))
             .frame(minWidth: 500, minHeight: 400)  // 設定最小視窗大小
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("完成") {
+                    Button(L10n.tr("common.done")) {
                         if hasTargetDate {
                             Task {
                                 isLoading = true
@@ -70,10 +70,10 @@ struct CountdownSettingsView: View {
     
     private var toggleSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("倒數計日設定")
+            Text(L10n.tr("countdown.settings.section_title"))
                 .font(.headline)
             
-            Toggle("設定目標日期", isOn: $hasTargetDate)
+            Toggle(L10n.tr("countdown.center.set_target_date"), isOn: $hasTargetDate)
                 .onChange(of: hasTargetDate) { _, newValue in
                     if !newValue {
                         Task {
@@ -86,24 +86,24 @@ struct CountdownSettingsView: View {
     
     private var dateSettingsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("目標設定")
+            Text(L10n.tr("countdown.settings.target_section"))
                 .font(.headline)
             
             DatePicker(
-                "目標日期",
+                L10n.tr("countdown.center.target_date"),
                 selection: $selectedDate,
                 displayedComponents: .date
             )
             .datePickerStyle(.compact)
             
-            TextField("目標描述", text: $targetDescription, prompt: Text("例如：期末考試、作業截止等"))
+            TextField(L10n.tr("countdown.settings.target_description"), text: $targetDescription, prompt: Text(L10n.tr("countdown.settings.target_description_example")))
                 .textFieldStyle(.roundedBorder)
         }
     }
     
     private var quickSetSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("快速設定")
+            Text(L10n.tr("countdown.settings.quick_set"))
                 .font(.subheadline)
                 .foregroundColor(.secondary)
             
@@ -112,22 +112,22 @@ struct CountdownSettingsView: View {
                 GridItem(.flexible(), spacing: 12),
                 GridItem(.flexible(), spacing: 12)
             ], spacing: 12) {
-                QuickSetButton(title: "1週", days: 7) {
+                QuickSetButton(title: L10n.tr("countdown.quick.1week"), days: 7) {
                     selectedDate = Calendar.current.date(byAdding: .day, value: 7, to: Date()) ?? Date()
                 }
-                QuickSetButton(title: "2週", days: 14) {
+                QuickSetButton(title: L10n.tr("countdown.quick.2weeks"), days: 14) {
                     selectedDate = Calendar.current.date(byAdding: .day, value: 14, to: Date()) ?? Date()
                 }
-                QuickSetButton(title: "1個月", days: 30) {
+                QuickSetButton(title: L10n.tr("countdown.quick.1month"), days: 30) {
                     selectedDate = Calendar.current.date(byAdding: .day, value: 30, to: Date()) ?? Date()
                 }
-                QuickSetButton(title: "2個月", days: 60) {
+                QuickSetButton(title: L10n.tr("countdown.quick.2months"), days: 60) {
                     selectedDate = Calendar.current.date(byAdding: .day, value: 60, to: Date()) ?? Date()
                 }
-                QuickSetButton(title: "3個月", days: 90) {
+                QuickSetButton(title: L10n.tr("countdown.quick.3months"), days: 90) {
                     selectedDate = Calendar.current.date(byAdding: .day, value: 90, to: Date()) ?? Date()
                 }
-                QuickSetButton(title: "6個月", days: 180) {
+                QuickSetButton(title: L10n.tr("countdown.quick.6months"), days: 180) {
                     selectedDate = Calendar.current.date(byAdding: .day, value: 180, to: Date()) ?? Date()
                 }
             }
@@ -139,7 +139,7 @@ struct CountdownSettingsView: View {
             if !isLoading {
                 let countdownInfo = appState.getCountdownInfo(for: courseID)
                 if countdownInfo.daysRemaining != nil {
-                    Text("預覽")
+                    Text(L10n.tr("common.preview"))
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                     
@@ -160,7 +160,7 @@ struct CountdownSettingsView: View {
     }
     
     private var saveButtonSection: some View {
-        Button("保存設定") {
+        Button(L10n.tr("common.save")) {
             Task {
                 isLoading = true
                 await appState.setTargetDate(
@@ -178,7 +178,7 @@ struct CountdownSettingsView: View {
     
     private var courseStatusSection: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("課程狀態概覽")
+            Text(L10n.tr("countdown.settings.course_status"))
                 .font(.headline)
             
             let upcomingDeadlines = appState.upcomingDeadlines
@@ -189,7 +189,7 @@ struct CountdownSettingsView: View {
                     HStack {
                         Image(systemName: "clock")
                             .foregroundColor(.orange)
-                        Text("即將到期課程")
+                        Text(L10n.tr("countdown.settings.upcoming_courses"))
                             .font(.subheadline)
                             .fontWeight(.medium)
                             .foregroundColor(.orange)
@@ -216,7 +216,7 @@ struct CountdownSettingsView: View {
                     HStack {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .foregroundColor(.red)
-                        Text("已過期課程")
+                        Text(L10n.tr("countdown.settings.overdue_courses"))
                             .font(.subheadline)
                             .fontWeight(.medium)
                             .foregroundColor(.red)
@@ -239,7 +239,7 @@ struct CountdownSettingsView: View {
             }
             
             if upcomingDeadlines.isEmpty && overdueCourses.isEmpty {
-                Text("目前沒有即將到期或過期的課程")
+                Text(L10n.tr("countdown.settings.no_urgent_courses"))
                     .foregroundColor(.secondary)
                     .italic()
                     .frame(maxWidth: .infinity, alignment: .center)
@@ -272,7 +272,7 @@ struct QuickSetButton: View {
                 Text(title)
                     .font(.subheadline)
                     .fontWeight(.medium)
-                Text("\(days)天")
+                Text(L10n.tr("countdown.quick.days", days))
                     .font(.caption)
                     .foregroundColor(.secondary)
             }

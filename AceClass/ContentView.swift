@@ -24,7 +24,7 @@ struct ContentView: View {
             } detail: {
                 videoPlayerArea
             }
-            .navigationTitle("AceClass")
+            .navigationTitle(L10n.tr("app.title"))
             .toolbar(appState.isVideoPlayerFullScreen ? .hidden : .visible, for: .windowToolbar)
             .toolbar {
                 if !appState.courses.isEmpty {
@@ -34,14 +34,14 @@ struct ContentView: View {
                         } label: {
                             Image(systemName: "folder.badge.gearshape")
                         }
-                        .help("更換來源資料夾")
+                        .help(L10n.tr("toolbar.change_folder"))
 
                         Button {
                             showingCountdownCenter = true
                         } label: {
                             Image(systemName: "calendar.badge.clock")
                         }
-                        .help("倒數中心")
+                        .help(L10n.tr("toolbar.countdown_center"))
                         .disabled(localSelectedCourseID == nil)
 
                         Button {
@@ -49,7 +49,7 @@ struct ContentView: View {
                         } label: {
                             Image(systemName: "ladybug")
                         }
-                        .help("偵錯主控台")
+                        .help(L10n.tr("toolbar.debug_console"))
                     }
                 }
             }
@@ -57,7 +57,7 @@ struct ContentView: View {
                 CountdownCenterView(appState: appState, initialSelectedCourseID: localSelectedCourseID)
             }
             .sheet(isPresented: $showingDebugConsole) {
-                DebugConsoleView()
+                DebugConsoleView(appState: appState)
             }
             .fileImporter(
                 isPresented: $showFolderPicker,
@@ -93,16 +93,16 @@ struct ContentView: View {
 
             if !appState.courses.isEmpty {
                 HStack(spacing: 10) {
-                    MetricCard(title: "課程", value: "\(appState.courses.count)", tint: .blue)
-                    MetricCard(title: "影片", value: "\(totalVideoCount)", tint: .indigo)
-                    MetricCard(title: "待看", value: "\(remainingVideoCount)", tint: .orange)
+                    MetricCard(title: L10n.tr("metric.courses"), value: "\(appState.courses.count)", tint: .blue)
+                    MetricCard(title: L10n.tr("metric.videos"), value: "\(totalVideoCount)", tint: .indigo)
+                    MetricCard(title: L10n.tr("metric.remaining"), value: "\(remainingVideoCount)", tint: .orange)
                 }
                 .padding(.horizontal, 16)
             }
 
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
-                    Text("課程列表")
+                    Text(L10n.tr("sidebar.course_list"))
                         .font(.headline)
                     Spacer()
                     Text("\(appState.courses.count)")
@@ -114,8 +114,8 @@ struct ContentView: View {
                 if appState.courses.isEmpty {
                     EmptyStateCard(
                         icon: "folder",
-                        title: "尚未選擇課程資料夾",
-                        subtitle: "從左上角選一個包含課程影片的資料夾，AceClass 會自動建立課程列表。"
+                        title: L10n.tr("empty.no_source.title"),
+                        subtitle: L10n.tr("empty.no_source.subtitle")
                     )
                     .padding(.horizontal, 16)
                     Spacer()
@@ -172,8 +172,8 @@ struct ContentView: View {
                         Spacer()
                         EmptyStateCard(
                             icon: "play.slash",
-                            title: "這個課程還沒有可播放的影片",
-                            subtitle: "確認資料夾內含 `.mp4`、`.mov` 或 `.m4v` 檔案後重新載入。"
+                            title: L10n.tr("empty.no_video.title"),
+                            subtitle: L10n.tr("empty.no_video.subtitle", AppState.supportedVideoFormatsDescription)
                         )
                         .padding(.horizontal, 16)
                         Spacer()
@@ -182,6 +182,7 @@ struct ContentView: View {
                             ForEach(courseBinding.videos) { $video in
                                 VideoRowView(
                                     video: $video,
+                                    videoURL: course.folderURL.appendingPathComponent(video.relativePath),
                                     isPlaying: appState.currentVideo?.id == video.id,
                                     playAction: {
                                         appState.scheduleSelectVideo(video)
@@ -210,8 +211,8 @@ struct ContentView: View {
             } else {
                 EmptyStateCard(
                     icon: "rectangle.stack",
-                    title: "先選擇一門課程",
-                    subtitle: "左側會顯示你掃描到的課程；選取後可編輯影片名稱、筆記與觀看狀態。"
+                    title: L10n.tr("empty.no_course.title"),
+                    subtitle: L10n.tr("empty.no_course.subtitle")
                 )
                 .padding(24)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -243,8 +244,8 @@ struct ContentView: View {
             } else {
                 EmptyStateCard(
                     icon: "film.stack",
-                    title: "AceClass 已準備完成",
-                    subtitle: "選好來源資料夾後，你可以管理課程影片、追蹤進度，並設定每門課的倒數目標。"
+                    title: L10n.tr("empty.ready.title"),
+                    subtitle: L10n.tr("empty.ready.subtitle")
                 )
                 .padding(24)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -284,13 +285,6 @@ struct ContentView: View {
             }
 
             FlowMetadataRow(items: metadataItems(for: video))
-
-            if let noteSummary = video.noteSummary {
-                Text(noteSummary)
-                    .font(.body)
-                    .foregroundStyle(.primary)
-                    .padding(.top, 2)
-            }
 
             Text(video.fileName)
                 .font(.caption)
@@ -348,9 +342,9 @@ struct SidebarHeroCard: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("AceClass")
+                    Text(L10n.tr("app.title"))
                         .font(.system(size: 28, weight: .bold, design: .rounded))
-                    Text("補課影片管理與學習倒數")
+                    Text(L10n.tr("app.subtitle"))
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
@@ -363,14 +357,14 @@ struct SidebarHeroCard: View {
             }
 
             Button(action: onPickFolder) {
-                Label(sourceFolderURL == nil ? "選擇課程資料夾" : "更換資料夾", systemImage: "folder")
+                Label(sourceFolderURL == nil ? L10n.tr("sidebar.select_folder") : L10n.tr("sidebar.change_folder"), systemImage: "folder")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
 
             if let sourceFolderURL {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("目前來源")
+                    Text(L10n.tr("sidebar.current_source"))
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
                     Text(sourceFolderURL.path)
@@ -380,13 +374,13 @@ struct SidebarHeroCard: View {
                         .truncationMode(.middle)
                 }
             } else {
-                Text("挑選一個根資料夾後，AceClass 會依子資料夾自動整理課程，並記住觀看進度與倒數設定。")
+                Text(L10n.tr("sidebar.source_hint"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
             if totalCourses > 0 || totalVideos > 0 {
-                Text("\(totalCourses) 門課程 ・ \(totalVideos) 部影片")
+                Text(L10n.tr("sidebar.courses_videos_summary", totalCourses, totalVideos))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
@@ -543,7 +537,7 @@ struct CountdownOverviewSheet: View {
         CountdownOverviewView(appState: appState)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("關閉") {
+                    Button(L10n.tr("common.close")) {
                         isPresented = false
                     }
                 }
@@ -561,7 +555,7 @@ struct CountdownSettingsSheet: View {
         CountdownSettingsView(appState: appState, courseID: courseID)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("關閉") {
+                    Button(L10n.tr("common.close")) {
                         isPresented = false
                     }
                 }

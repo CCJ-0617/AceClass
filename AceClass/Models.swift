@@ -10,8 +10,8 @@ struct VideoItem: Identifiable, Codable {
     }()
     private static let metadataDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "zh_TW")
-        formatter.dateFormat = "yyyy/MM/dd"
+        formatter.locale = .autoupdatingCurrent
+        formatter.setLocalizedDateFormatFromTemplate("yMd")
         return formatter
     }()
 
@@ -36,7 +36,7 @@ struct VideoItem: Identifiable, Codable {
         self.fileName = fileName
         self.relativePath = relativePath ?? fileName
         self.displayName = displayName ?? fileName
-        self.note = note.isEmpty ? fileName : note // 如果註解為空，則預設為檔名
+        self.note = note
         self.watched = watched
         self.date = Self.extractDate(from: fileName) // 初始化時自動解析日期
         self.lastPlaybackPosition = lastPlaybackPosition
@@ -143,11 +143,11 @@ struct VideoItem: Identifiable, Codable {
 
     var playbackPositionText: String? {
         guard let lastPlaybackPosition, lastPlaybackPosition >= 5 else { return nil }
-        return "續播 \(Self.formatTime(lastPlaybackPosition))"
+        return L10n.tr("video.resume_from", Self.formatTime(lastPlaybackPosition))
     }
 
     var watchStatusText: String {
-        watched ? "已觀看" : "未觀看"
+        watched ? L10n.tr("video.status.watched") : L10n.tr("video.status.unwatched")
     }
 
     private static func formatTime(_ seconds: Double) -> String {
@@ -213,14 +213,14 @@ struct Course: Identifiable, Hashable, Codable {
     
     // 格式化的倒數計日文字
     var countdownText: String {
-        guard let daysRemaining = daysRemaining else { return "未設定目標日期" }
+        guard let daysRemaining = daysRemaining else { return L10n.tr("countdown.no_target") }
         
         if daysRemaining < 0 {
-            return "已過期 \(abs(daysRemaining)) 天"
+            return L10n.tr("countdown.overdue_days", abs(daysRemaining))
         } else if daysRemaining == 0 {
-            return "今天到期"
+            return L10n.tr("countdown.due_today")
         } else {
-            return "剩餘 \(daysRemaining) 天"
+            return L10n.tr("countdown.remaining_days", daysRemaining)
         }
     }
     
@@ -271,11 +271,13 @@ struct Course: Identifiable, Hashable, Codable {
     }
 
     var completionText: String {
-        "\(watchedVideoCount)/\(totalVideoCount) 已完成"
+        L10n.tr("course.completion", watchedVideoCount, totalVideoCount)
     }
 
     var progressPercentText: String {
-        totalVideoCount == 0 ? "尚無影片" : "\(Int((completionRatio * 100).rounded()))% 完成"
+        totalVideoCount == 0
+            ? L10n.tr("course.no_videos")
+            : L10n.tr("course.progress_percent", Int((completionRatio * 100).rounded()))
     }
 
     var targetDateText: String? {
@@ -297,11 +299,11 @@ struct Course: Identifiable, Hashable, Codable {
 
     var learningStatusText: String {
         if totalVideoCount == 0 {
-            return "等待匯入影片"
+            return L10n.tr("course.waiting_import")
         }
         if unwatchedVideoCount == 0 {
-            return "全部影片已完成"
+            return L10n.tr("course.completed_all")
         }
-        return "還有 \(unwatchedVideoCount) 部待看"
+        return L10n.tr("course.remaining_videos", unwatchedVideoCount)
     }
 }

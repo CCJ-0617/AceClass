@@ -58,6 +58,8 @@ class AppState: ObservableObject {
     @Published var captionsFeatureEnabled: Bool = false // 全域字幕功能開關（暫時停用字幕）
     @Published var isInitializingPlayer: Bool = false // 影片播放器初始化狀態
     @Published var enableVideoCaching: Bool = true // 小於閾值影片先複製到本地快取
+    @Published var playerLoadingTitle: String? = nil
+    @Published var playerLoadingDetail: String? = nil
 
     // MARK: - Private Properties
     private let bookmarkKey = "selectedFolderBookmark"
@@ -78,7 +80,13 @@ class AppState: ObservableObject {
     private struct PlayerDiagnostics { var selectionRequests=0; var executedSelections=0; var playerInitSuccess=0; var playerInitFailure=0; var benignCancellations=0; var lastInitDuration: TimeInterval=0; var avgInitDuration: TimeInterval=0 }
     private var diagnostics = PlayerDiagnostics()
     private var currentInitStart: Date? = nil
-    nonisolated private static let supportedVideoExtensions: Set<String> = ["mp4", "mov", "m4v"]
+    nonisolated static let supportedVideoExtensions: [String] = [
+        "mp4", "mov", "m4v", "mkv",
+        "avi", "mpg", "mpeg",
+        "mts", "m2ts", "ts",
+        "3gp", "3g2"
+    ]
+    nonisolated private static let supportedVideoExtensionSet = Set(supportedVideoExtensions)
     private struct CourseDerivedData {
         var courseIndexByID: [UUID: Int] = [:]
         var coursesWithTargets: [Course] = []
@@ -108,6 +116,10 @@ class AppState: ObservableObject {
 
     var overdueCourses: [Course] {
         courseDerivedData.overdueCourses
+    }
+
+    nonisolated static var supportedVideoFormatsDescription: String {
+        supportedVideoExtensions.map { ".\($0)" }.joined(separator: ", ")
     }
     
     // MARK: - Initializer & Deinitializer
@@ -157,26 +169,99 @@ class AppState: ObservableObject {
         courseDerivedData.courseIndexByID[courseID]
     }
 
-    private func storageKey(for folderURL: URL) -> String {
-        LocalMetadataStorage.storageKey(for: folderURL)
-    }
-
     private func normalizedCoursePath(_ folderURL: URL) -> String {
         folderURL.standardizedFileURL.resolvingSymlinksInPath().path
     }
 
+    nonisolated static func isSupportedVideoFile(_ url: URL) -> Bool {
+        supportedVideoExtensionSet.contains(url.pathExtension.lowercased())
+    }
+
     private func shouldScanCourseRecursively(_ course: Course) -> Bool {
+        shouldScanCourseRecursively(folderURL: course.folderURL)
+    }
+
+    private func shouldScanCourseRecursively(folderURL: URL, knownCourseFolderPaths: Set<String>? = nil) -> Bool {
         guard let sourceFolderURL else { return true }
-        let coursePath = normalizedCoursePath(course.folderURL)
+        let coursePath = normalizedCoursePath(folderURL)
         let sourcePath = normalizedCoursePath(sourceFolderURL)
         if coursePath != sourcePath {
             return true
         }
 
-        return !courses.contains {
-            let candidatePath = normalizedCoursePath($0.folderURL)
-            return candidatePath != sourcePath && candidatePath.hasPrefix(sourcePath + "/")
+        let candidatePaths = knownCourseFolderPaths ?? Set(courses.map { normalizedCoursePath($0.folderURL) })
+        return !candidatePaths.contains {
+            $0 != sourcePath && $0.hasPrefix(sourcePath + "/")
         }
+    }
+
+    private func loadVideoSnapshot(for folderURL: URL, recursive: Bool) async throws -> [VideoItem] {
+        try await Task.detached {
+            func isSupportedVideo(_ url: URL) -> Bool {
+                AppState.isSupportedVideoFile(url)
+            }
+
+            func collectVideoFiles(in folderURL: URL, recursive: Bool) throws -> [URL] {
+                if recursive {
+                    guard let enumerator = FileManager.default.enumerator(
+                        at: folderURL,
+                        includingPropertiesForKeys: [.isRegularFileKey],
+                        options: [.skipsHiddenFiles, .skipsPackageDescendants]
+                    ) else {
+                        return []
+                    }
+
+                    var files: [URL] = []
+                    for case let fileURL as URL in enumerator where isSupportedVideo(fileURL) {
+                        files.append(fileURL)
+                    }
+                    return files
+                }
+
+                let contents = try FileManager.default.contentsOfDirectory(
+                    at: folderURL,
+                    includingPropertiesForKeys: nil,
+                    options: .skipsHiddenFiles
+                )
+                return contents.filter(isSupportedVideo)
+            }
+
+            let loadedVideos = LocalMetadataStorage.loadVideos(for: folderURL)
+
+            let videoFiles = try collectVideoFiles(in: folderURL, recursive: recursive)
+                .sorted { $0.lastPathComponent.localizedCaseInsensitiveCompare($1.lastPathComponent) == .orderedAscending }
+            let loadedVideosByPath = Dictionary(uniqueKeysWithValues: loadedVideos.map { ($0.relativePath, $0) })
+            let loadedVideosByFileName = Dictionary(uniqueKeysWithValues: loadedVideos.map { ($0.fileName, $0) })
+
+            var updatedVideos: [VideoItem] = []
+
+            for fileURL in videoFiles {
+                let fileName = fileURL.lastPathComponent
+                let relativePath = fileURL.path.replacingOccurrences(of: folderURL.path + "/", with: "")
+                if let existing = loadedVideosByPath[relativePath] {
+                    updatedVideos.append(existing)
+                } else if let existing = loadedVideosByFileName[fileName] {
+                    updatedVideos.append(existing.updatingRelativePath(relativePath))
+                } else {
+                    updatedVideos.append(VideoItem(fileName: fileName, relativePath: relativePath))
+                }
+            }
+
+            updatedVideos.sort { (a, b) -> Bool in
+                switch (a.date, b.date) {
+                case let (date1?, date2?):
+                    return date1 < date2
+                case (nil, nil):
+                    return a.displayName.localizedCompare(b.displayName) == .orderedAscending
+                case (nil, _):
+                    return false
+                case (_, nil):
+                    return true
+                }
+            }
+
+            return updatedVideos
+        }.value
     }
 
     // MARK: - Safe UI Update Methods
@@ -277,6 +362,8 @@ class AppState: ObservableObject {
                 self.player = nil
                 self.captionsForCurrentVideo = []
                 self.captionError = nil
+                self.playerLoadingTitle = nil
+                self.playerLoadingDetail = nil
                 isInitializingPlayer = false
                 return
             }
@@ -285,10 +372,14 @@ class AppState: ObservableObject {
             ACLog("Setting currentVideo to: \(video?.fileName ?? "unknown")", level: .debug)
             self.currentVideo = video
             self.player = nil
+            self.playerLoadingTitle = L10n.tr("player.loading.preparing")
+            self.playerLoadingDetail = video?.fileName
 
             guard let course = selectedCourse, let videoToPlay = video else { return }
             guard let sourceFolderURL = self.securityScopedURL else {
                 ACLog("Cannot play video because the main folder's security scope is missing.", level: .critical)
+                self.playerLoadingTitle = L10n.tr("player.loading.unable")
+                self.playerLoadingDetail = L10n.tr("player.loading.missing_folder_access")
                 diagnostics.playerInitFailure += 1
                 finalizeInitDiagnostics(success: false)
                 return
@@ -298,18 +389,28 @@ class AppState: ObservableObject {
             if sourceFolderURL.startAccessingSecurityScopedResource() {
                 var fileURL = course.folderURL.appendingPathComponent(videoToPlay.relativePath)
                 ACLog("Preparing video URL: \(fileURL.lastPathComponent)", level: .debug)
+                self.playerLoadingTitle = L10n.tr("player.loading.checking_source")
+                self.playerLoadingDetail = videoToPlay.fileName
                 if enableVideoCaching {
+                    self.playerLoadingTitle = L10n.tr("player.loading.preparing_file")
+                    self.playerLoadingDetail = L10n.tr("player.loading.checking_cache")
                     do {
                         let cached = try await VideoCacheManager.shared.preparePlaybackURL(for: fileURL)
                         if cached != fileURL {
                             ACLog("Using cached local copy for playback: \(cached.lastPathComponent)", level: .info)
                             fileURL = cached
+                            self.playerLoadingDetail = L10n.tr("player.loading.using_cached_copy")
+                        } else {
+                            self.playerLoadingDetail = L10n.tr("player.loading.using_original")
                         }
                     } catch {
                         ACLog("Cache prepare failed (use original): \(error.localizedDescription)", level: .warn)
+                        self.playerLoadingDetail = L10n.tr("player.loading.cache_unavailable")
                     }
                 }
                 ACLog("Creating AVPlayer for: \(fileURL.path)", level: .debug)
+                self.playerLoadingTitle = L10n.tr("player.loading.starting")
+                self.playerLoadingDetail = L10n.tr("player.loading.session_setup")
                 let newPlayer = AVPlayer(url: fileURL)
                 self.player = newPlayer
                 let initSuccessMark: @Sendable () -> Void = { [weak self] in
@@ -331,11 +432,15 @@ class AppState: ObservableObject {
                                     self.diagnostics.benignCancellations += 1
                                 } else {
                                     ACLog("Playback failed code=\(ns.code) domain=\(ns.domain) desc=\(err.localizedDescription)", level: .error)
+                                    self.playerLoadingTitle = L10n.tr("player.loading.failed")
+                                    self.playerLoadingDetail = err.localizedDescription
                                     self.diagnostics.playerInitFailure += 1
                                 }
                                 self.finalizeInitDiagnostics(success: false)
                             } else {
                                 ACLog("Playback failed (no error info)", level: .error)
+                                self.playerLoadingTitle = L10n.tr("player.loading.failed")
+                                self.playerLoadingDetail = L10n.tr("player.loading.no_error_details")
                                 self.diagnostics.playerInitFailure += 1
                                 self.finalizeInitDiagnostics(success: false)
                             }
@@ -355,7 +460,7 @@ class AppState: ObservableObject {
                                 await MainActor.run {
                                     newPlayer.seek(to: seekTime, toleranceBefore: .zero, toleranceAfter: .zero)
                                     let mm = Int(savedPosition) / 60; let ss = Int(savedPosition) % 60
-                                    self.resumeOverlayText = String(format: "從上次位置續播 %02d:%02d", mm, ss)
+                                    self.resumeOverlayText = L10n.tr("player.resume_overlay", mm, ss)
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in self?.resumeOverlayText = nil }
                                     ACLog("Seeked to saved position: \(savedPosition)s (duration=\(durationSeconds)s)", level: .info)
                                 }
@@ -366,6 +471,8 @@ class AppState: ObservableObject {
                     }
                 }
                 self.player?.play()
+                self.playerLoadingTitle = nil
+                self.playerLoadingDetail = nil
                 initSuccessMark()
                 // Setup periodic observer for position + auto-mark
                 if timeObserverToken == nil, let player = self.player {
@@ -391,7 +498,7 @@ class AppState: ObservableObject {
                             guard status == .authorized else {
                                 ACLog("Speech not authorized: \(status.rawValue)", level: .warn)
                                 await MainActor.run {
-                                    self.captionError = "字幕不可用"
+                                    self.captionError = L10n.tr("player.captions_unavailable")
                                     self.captionLoading = false
                                 }
                                 return
@@ -400,7 +507,7 @@ class AppState: ObservableObject {
                             await MainActor.run {
                                 self.captionLoading = false
                                 if segments.isEmpty {
-                                    self.captionError = "字幕不可用"
+                                    self.captionError = L10n.tr("player.captions_unavailable")
                                 } else {
                                     self.captionsForCurrentVideo = segments
                                     self.captionError = nil
@@ -411,7 +518,7 @@ class AppState: ObservableObject {
                             ACLog("Transcription failed: \(error.localizedDescription)", level: .error)
                             await MainActor.run {
                                 self.captionLoading = false
-                                self.captionError = "字幕不可用"
+                                self.captionError = L10n.tr("player.captions_unavailable")
                             }
                         }
                     }
@@ -425,6 +532,8 @@ class AppState: ObservableObject {
                 self.currentlyAccessedVideoURL = sourceFolderURL
             } else {
                 ACLog("Failed to start security-scoped access for the source folder.", level: .error)
+                self.playerLoadingTitle = L10n.tr("player.loading.unable")
+                self.playerLoadingDetail = L10n.tr("player.loading.security_scope_failed")
                 diagnostics.playerInitFailure += 1
                 finalizeInitDiagnostics(success: false)
             }
@@ -662,10 +771,15 @@ class AppState: ObservableObject {
         print("📚 [DEBUG] loadCourses called for: \(sourceURL.path)")
         do {
             // First load the courses on a background thread
-            let supportedExtensions = Self.supportedVideoExtensions
             let loadResult = try await Task.detached { () -> (courseFolders: [URL], rootVideoFiles: [URL], debugListing: [String]) in
+                let genericUnitFolderNames: Set<String> = ["單元_未分類", "未分類"]
+
                 func isSupportedVideo(_ url: URL) -> Bool {
-                    supportedExtensions.contains(url.pathExtension.lowercased())
+                    AppState.isSupportedVideoFile(url)
+                }
+
+                func isGenericUnitFolder(_ folderURL: URL) -> Bool {
+                    genericUnitFolderNames.contains(folderURL.lastPathComponent)
                 }
 
                 func immediateDirectoryContents(of folderURL: URL) throws -> [URL] {
@@ -705,29 +819,31 @@ class AppState: ObservableObject {
                     return false
                 }
 
-                func discoverCourseFolders(in rootURL: URL) throws -> [URL] {
-                    var discovered: [URL] = []
-
-                    for childFolder in try immediateChildFolders(of: rootURL) {
-                        if !(try immediateVideoFiles(in: childFolder)).isEmpty {
-                            discovered.append(childFolder)
-                            continue
-                        }
-
-                        let grandchildFolders = try immediateChildFolders(of: childFolder)
-                        let grandchildrenWithVideos = try grandchildFolders.filter { try directoryContainsSupportedVideos($0) }
-
-                        if grandchildrenWithVideos.count > 1 {
-                            discovered.append(contentsOf: grandchildrenWithVideos)
-                            continue
-                        }
-
-                        if try directoryContainsSupportedVideos(childFolder) {
-                            discovered.append(childFolder)
-                        }
+                func discoverCourseFolders(in folderURL: URL) throws -> [URL] {
+                    if !(try immediateVideoFiles(in: folderURL)).isEmpty {
+                        return [folderURL]
                     }
 
-                    return discovered
+                    let childFolders = try immediateChildFolders(of: folderURL)
+                    let childFoldersWithVideos = try childFolders.filter { try directoryContainsSupportedVideos($0) }
+
+                    guard !childFoldersWithVideos.isEmpty else {
+                        return []
+                    }
+
+                    if childFoldersWithVideos.count == 1 {
+                        let onlyChild = childFoldersWithVideos[0]
+                        if isGenericUnitFolder(onlyChild) {
+                            return [folderURL]
+                        }
+                        return try discoverCourseFolders(in: onlyChild)
+                    }
+
+                    if childFoldersWithVideos.contains(where: isGenericUnitFolder) {
+                        return [folderURL]
+                    }
+
+                    return try childFoldersWithVideos.flatMap { try discoverCourseFolders(in: $0) }
                 }
 
                 let contents = try FileManager.default.contentsOfDirectory(
@@ -749,75 +865,88 @@ class AppState: ObservableObject {
                 .sorted { $0.lastPathComponent.localizedCaseInsensitiveCompare($1.lastPathComponent) == .orderedAscending }
             let rootVideoFiles = loadResult.rootVideoFiles
             
-            print("📚 [DEBUG] Found \(courseFolders.count) course folders; root has \(rootVideoFiles.count) video files (mp4/mov/m4v)")
-            
-            // Schedule UI updates for the next run loop to avoid "Publishing changes from within view updates"
-            Task { @MainActor in
-                print("📚 [DEBUG] Processing loadCourses UI update in Task")
-                
-                var coursesWithMetadata: [Course] = []
-                let existingCoursesByPath = Dictionary(uniqueKeysWithValues: self.courses.map {
-                    (self.normalizedCoursePath($0.folderURL), $0)
-                })
-                
-                let includeRootAsCourse = !rootVideoFiles.isEmpty
-                let candidateFolders = (includeRootAsCourse ? [sourceURL] : []) + courseFolders
+            print("📚 [DEBUG] Found \(courseFolders.count) course folders; root has \(rootVideoFiles.count) supported video files")
+            print("📚 [DEBUG] Applying loadCourses result on @MainActor")
 
-                if !candidateFolders.isEmpty {
-                    for folderURL in candidateFolders {
-                        let folderPath = self.normalizedCoursePath(folderURL)
-                        if let existingCourse = existingCoursesByPath[folderPath] {
-                            coursesWithMetadata.append(existingCourse)
-                            continue
-                        }
+            var coursesWithMetadata: [Course] = []
+            let existingCoursesByPath = Dictionary(uniqueKeysWithValues: self.courses.map {
+                (self.normalizedCoursePath($0.folderURL), $0)
+            })
 
-                        let (targetDate, targetDescription) = await self.loadCourseMetadata(for: folderURL)
-                        let courseWithMetadata = Course(
-                            folderURL: folderURL,
-                            videos: [],
-                            targetDate: targetDate,
-                            targetDescription: targetDescription
-                        )
-                        coursesWithMetadata.append(courseWithMetadata)
-                    }
-                } else {
-                    print("📚 [DEBUG] No supported video files found under the selected folder tree")
-                    if !loadResult.debugListing.isEmpty {
-                        print("📚 [DEBUG] Directory listing (up to 20):\n" + loadResult.debugListing.joined(separator: "\n"))
-                    }
-                }
+            let includeRootAsCourse = !rootVideoFiles.isEmpty
+            let candidateFolders = (includeRootAsCourse ? [sourceURL] : []) + courseFolders
 
-                if coursesWithMetadata.isEmpty, !rootVideoFiles.isEmpty {
-                    let folderURL = sourceURL
+            let candidateFolderPaths = Set(candidateFolders.map { self.normalizedCoursePath($0) })
+
+            if !candidateFolders.isEmpty {
+                for folderURL in candidateFolders {
                     let folderPath = self.normalizedCoursePath(folderURL)
-                    if let existingCourse = existingCoursesByPath[folderPath] {
-                        coursesWithMetadata.append(existingCourse)
-                    } else {
-                        let (targetDate, targetDescription) = await self.loadCourseMetadata(for: folderURL)
-                        let courseWithMetadata = Course(
-                            folderURL: folderURL,
-                            videos: [],
-                            targetDate: targetDate,
-                            targetDescription: targetDescription
-                        )
-                        coursesWithMetadata.append(courseWithMetadata)
+                    let (targetDate, targetDescription) = await self.loadCourseMetadata(for: folderURL)
+                    let recursiveScan = self.shouldScanCourseRecursively(
+                        folderURL: folderURL,
+                        knownCourseFolderPaths: candidateFolderPaths
+                    )
+                    let videos: [VideoItem]
+                    do {
+                        videos = try await self.loadVideoSnapshot(for: folderURL, recursive: recursiveScan)
+                    } catch {
+                        print("📚 [DEBUG] Failed to preload videos for \(folderURL.lastPathComponent): \(error.localizedDescription)")
+                        videos = existingCoursesByPath[folderPath]?.videos ?? []
                     }
-                }
-                
-                self.courses = coursesWithMetadata
-                print("載入了 \(self.courses.count) 個課程。")
 
-                if let selectedCourseID = self.selectedCourseID,
-                   self.courseIndex(for: selectedCourseID) == nil {
-                    self.selectedCourseID = nil
+                    let existingCourse = existingCoursesByPath[folderPath]
+                    let courseWithMetadata = Course(
+                        id: existingCourse?.id ?? UUID(),
+                        folderURL: folderURL,
+                        videos: videos,
+                        targetDate: targetDate,
+                        targetDescription: targetDescription
+                    )
+                    coursesWithMetadata.append(courseWithMetadata)
                 }
-                
-                // If no course is selected, select the first one and load its videos
-                if self.selectedCourseID == nil, let firstCourse = self.courses.first {
-                    print("📚 [DEBUG] Selecting first course: \(firstCourse.folderURL.lastPathComponent)")
-                    self.selectCourse(firstCourse.id)
-                    await self.loadVideos(for: firstCourse)
+            } else {
+                print("📚 [DEBUG] No supported video files found under the selected folder tree")
+                if !loadResult.debugListing.isEmpty {
+                    print("📚 [DEBUG] Directory listing (up to 20):\n" + loadResult.debugListing.joined(separator: "\n"))
                 }
+            }
+
+            if coursesWithMetadata.isEmpty, !rootVideoFiles.isEmpty {
+                let folderURL = sourceURL
+                let folderPath = self.normalizedCoursePath(folderURL)
+                if let existingCourse = existingCoursesByPath[folderPath] {
+                    coursesWithMetadata.append(existingCourse)
+                } else {
+                    let (targetDate, targetDescription) = await self.loadCourseMetadata(for: folderURL)
+                    let recursiveScan = self.shouldScanCourseRecursively(
+                        folderURL: folderURL,
+                        knownCourseFolderPaths: candidateFolderPaths
+                    )
+                    let videos = (try? await self.loadVideoSnapshot(for: folderURL, recursive: recursiveScan)) ?? []
+                    let courseWithMetadata = Course(
+                        id: UUID(),
+                        folderURL: folderURL,
+                        videos: videos,
+                        targetDate: targetDate,
+                        targetDescription: targetDescription
+                    )
+                    coursesWithMetadata.append(courseWithMetadata)
+                }
+            }
+
+            self.courses = coursesWithMetadata
+            print("載入了 \(self.courses.count) 個課程。")
+
+            if let selectedCourseID = self.selectedCourseID,
+               self.courseIndex(for: selectedCourseID) == nil {
+                self.selectedCourseID = nil
+            }
+            
+            // If no course is selected, select the first one and load its videos
+            if self.selectedCourseID == nil, let firstCourse = self.courses.first {
+                print("📚 [DEBUG] Selecting first course: \(firstCourse.folderURL.lastPathComponent)")
+                self.selectCourse(firstCourse.id)
+                await self.loadVideos(for: firstCourse)
             }
         } catch {
             print("讀取課程資料夾失敗: \(error.localizedDescription) at: \(sourceURL.path)")
@@ -835,110 +964,26 @@ class AppState: ObservableObject {
         // 使用 Task.detached 在背景執行檔案操作
         do {
             let shouldScanRecursively = shouldScanCourseRecursively(course)
-            let supportedExtensions = Self.supportedVideoExtensions
-            let updatedVideos = try await Task.detached {
-                func isSupportedVideo(_ url: URL) -> Bool {
-                    supportedExtensions.contains(url.pathExtension.lowercased())
-                }
+            let updatedVideos = try await self.loadVideoSnapshot(for: course.folderURL, recursive: shouldScanRecursively)
 
-                func collectVideoFiles(in folderURL: URL, recursive: Bool) throws -> [URL] {
-                    if recursive {
-                        guard let enumerator = FileManager.default.enumerator(
-                            at: folderURL,
-                            includingPropertiesForKeys: [.isRegularFileKey],
-                            options: [.skipsHiddenFiles, .skipsPackageDescendants]
-                        ) else {
-                            return []
-                        }
-
-                        var files: [URL] = []
-                        for case let fileURL as URL in enumerator where isSupportedVideo(fileURL) {
-                            files.append(fileURL)
-                        }
-                        return files
-                    }
-
-                    let contents = try FileManager.default.contentsOfDirectory(
-                        at: folderURL,
-                        includingPropertiesForKeys: nil,
-                        options: .skipsHiddenFiles
-                    )
-                    return contents.filter(isSupportedVideo)
-                }
-
-                let storageKey = LocalMetadataStorage.storageKey(for: course.folderURL)
-                // 先從本地元數據存儲中讀取
-                var loadedVideos = LocalMetadataStorage.loadVideos(for: storageKey)
-                
-                // 如果本地無數據，嘗試從外部讀取（向後兼容）
-                if loadedVideos.isEmpty {
-                    let jsonURL = course.folderURL.appendingPathComponent("videos.json")
-                    if let data = try? Data(contentsOf: jsonURL),
-                       let decodedVideos = try? JSONDecoder().decode([VideoItem].self, from: data) {
-                        loadedVideos = decodedVideos
-                        // 順便保存到本地元數據存儲中
-                        LocalMetadataStorage.saveVideos(decodedVideos, for: storageKey)
-                    }
-                }
-                
-                let videoFiles = try collectVideoFiles(in: course.folderURL, recursive: shouldScanRecursively)
-                    .sorted { $0.lastPathComponent.localizedCaseInsensitiveCompare($1.lastPathComponent) == .orderedAscending }
-                let loadedVideosByPath = Dictionary(uniqueKeysWithValues: loadedVideos.map { ($0.relativePath, $0) })
-                let loadedVideosByFileName = Dictionary(uniqueKeysWithValues: loadedVideos.map { ($0.fileName, $0) })
-                
-                var updatedVideos: [VideoItem] = []
-                
-                // 若沒有任何影片，附上簡要清單協助偵錯
-                if videoFiles.isEmpty {
-                    let contents = try FileManager.default.contentsOfDirectory(
-                        at: course.folderURL,
-                        includingPropertiesForKeys: nil,
-                        options: .skipsHiddenFiles
-                    )
-                    let debugList = contents.prefix(20).map { url in "- \(url.lastPathComponent) [ext=\(url.pathExtension.lowercased())]" }
-                    print("🎬 [DEBUG] No supported video files found. Directory sample (up to 20):\n" + debugList.joined(separator: "\n"))
-                }
-                
-                for fileURL in videoFiles {
-                    let fileName = fileURL.lastPathComponent
-                    let relativePath = fileURL.path.replacingOccurrences(of: course.folderURL.path + "/", with: "")
-                    if let existing = loadedVideosByPath[relativePath] {
-                        updatedVideos.append(existing)
-                    } else if let existing = loadedVideosByFileName[fileName] {
-                        updatedVideos.append(existing.updatingRelativePath(relativePath))
-                    } else {
-                        updatedVideos.append(VideoItem(fileName: fileName, relativePath: relativePath))
-                    }
-                }
-                
-                // 根據日期排序，無日期者放最後
-                updatedVideos.sort { (a, b) -> Bool in
-                    switch (a.date, b.date) {
-                    case let (date1?, date2?):
-                        return date1 < date2
-                    case (nil, nil):
-                        return a.displayName.localizedCompare(b.displayName) == .orderedAscending
-                    case (nil, _):
-                        return false
-                    case (_, nil):
-                        return true
-                    }
-                }
-                
-                return updatedVideos
-            }.value
+            if updatedVideos.isEmpty {
+                let contents = try FileManager.default.contentsOfDirectory(
+                    at: course.folderURL,
+                    includingPropertiesForKeys: nil,
+                    options: .skipsHiddenFiles
+                )
+                let debugList = contents.prefix(20).map { url in "- \(url.lastPathComponent) [ext=\(url.pathExtension.lowercased())]" }
+                print("🎬 [DEBUG] No supported video files found. Directory sample (up to 20):\n" + debugList.joined(separator: "\n"))
+            }
 
             print("🎬 [DEBUG] Found \(updatedVideos.count) videos for \(course.folderURL.lastPathComponent), scheduling UI update")
-            // Schedule UI updates for the next run loop to avoid "Publishing changes from within view updates"
-            Task { @MainActor in
-                guard let courseIndex = self.courseIndex(for: course.id) else { return }
-                print("🎬 [DEBUG] Processing loadVideos UI update in Task for: \(course.folderURL.lastPathComponent)")
-                self.courses[courseIndex].videos = updatedVideos
-                print("為課程 \(course.folderURL.lastPathComponent) 載入/更新了 \(updatedVideos.count) 個影片。")
-                
-                // Save updated video data
-                await self.saveVideos(for: course.id)
-            }
+            guard let courseIndex = self.courseIndex(for: course.id) else { return }
+            print("🎬 [DEBUG] Applying loadVideos result on @MainActor for: \(course.folderURL.lastPathComponent)")
+            self.courses[courseIndex].videos = updatedVideos
+            print("為課程 \(course.folderURL.lastPathComponent) 載入/更新了 \(updatedVideos.count) 個影片。")
+            
+            // Save updated video data
+            await self.saveVideos(for: course.id)
         } catch {
             print("讀取影片檔案失敗: \(error.localizedDescription)")
             print("請確認應用程式有存取所選資料夾的權限")
@@ -953,15 +998,10 @@ class AppState: ObservableObject {
         // Capture all needed data before going to background
         let videosToSave = course.videos
         let folderURL = course.folderURL
-        let storageKey = storageKey(for: folderURL)
         
         // Perform the file I/O on a background thread
         await Task.detached {
-            // First save to local storage
-            LocalMetadataStorage.saveVideos(videosToSave, for: storageKey)
-            
-            // Then try to copy to external location if possible
-            LocalMetadataStorage.tryCopyMetadataToExternalLocation(for: storageKey, folderURL: folderURL)
+            LocalMetadataStorage.saveVideos(videosToSave, for: folderURL)
         }.value
     }
     
@@ -1019,7 +1059,7 @@ class AppState: ObservableObject {
     /// 獲取指定課程的倒數計日資訊
     func getCountdownInfo(for courseID: UUID) -> (daysRemaining: Int?, countdownText: String, isOverdue: Bool) {
         guard let courseIndex = courseIndex(for: courseID) else {
-            return (nil, "課程未找到", false)
+            return (nil, L10n.tr("course.not_found"), false)
         }
         let course = courses[courseIndex]
         
@@ -1031,7 +1071,6 @@ class AppState: ObservableObject {
     private func saveCourseMetadata(for courseID: UUID) async {
         guard let courseIndex = courseIndex(for: courseID) else { return }
         let course = courses[courseIndex]
-        let storageKey = storageKey(for: course.folderURL)
         let metadata = LocalMetadataStorage.CourseMetadata(
             targetDate: course.targetDate,
             targetDescription: course.targetDescription
@@ -1039,8 +1078,8 @@ class AppState: ObservableObject {
         
         // 在背景線程保存數據
         await Task.detached {
-            LocalMetadataStorage.saveCourseMetadata(metadata, for: storageKey)
-            ACLog("Course metadata saved for storage key: \(storageKey)", level: .info)
+            LocalMetadataStorage.saveCourseMetadata(metadata, for: course.folderURL)
+            ACLog("Course metadata saved for folder: \(course.folderURL.lastPathComponent)", level: .info)
         }.value
     }
     
@@ -1048,8 +1087,7 @@ class AppState: ObservableObject {
     @MainActor
     private func loadCourseMetadata(for folderURL: URL) async -> (targetDate: Date?, targetDescription: String) {
         return await Task.detached {
-            let storageKey = LocalMetadataStorage.storageKey(for: folderURL)
-            guard let metadata = LocalMetadataStorage.loadCourseMetadata(for: storageKey) else {
+            guard let metadata = LocalMetadataStorage.loadCourseMetadata(for: folderURL) else {
                 return (nil, "")
             }
             return (metadata.targetDate, metadata.targetDescription)

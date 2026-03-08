@@ -23,10 +23,11 @@ struct UnwatchedVideoRowView: View {
                     .lineLimit(1)
                     .font(.headline)
                 
-                Text(video.noteSummary ?? "尚未補充筆記")
+                Text(video.fileName)
                     .font(.subheadline)
                     .foregroundColor(.secondary)
                     .lineLimit(1)
+                    .truncationMode(.middle)
             }
             
             Spacer()

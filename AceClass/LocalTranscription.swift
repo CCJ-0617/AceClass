@@ -6,6 +6,14 @@ import NaturalLanguage
 final class LocalTranscriptionService {
     static let shared = LocalTranscriptionService()
     private init() {}
+
+    private final class UncheckedSendableBox<Value>: @unchecked Sendable {
+        let value: Value
+
+        init(_ value: Value) {
+            self.value = value
+        }
+    }
     
     private struct LSeg { let locale: String; let seg: CaptionSegment }
     
@@ -19,6 +27,11 @@ final class LocalTranscriptionService {
     private let maxPCMAnalysisDuration: Double = 120 // seconds
     // NEW: per recognition attempt timeout
     private let recognitionTimeout: UInt64 = 180 * 1_000_000_000 // 180s
+    private let denoiseCutoffFrequency: Double = 120
+    private let denoiseChunkFrameCount: AVAudioFrameCount = 4096
+    private let denoiseGateFloorDB: Float = -50
+    private let denoiseGatePadding: Float = 2.4
+    private let denoiseMakeupGain: Float = 1.18
     
     private var audioExtractionCache: [URL: URL] = [:]
     private var audioAnalysisCache: [URL: AudioAnalysis] = [:]
@@ -206,10 +219,19 @@ final class LocalTranscriptionService {
         }
         debugAudioFile(baseURL, label: "analysis.base start")
     ACLog("AUDIO analyzeAudio start", level: .trace)
-        let analysis = try await analyzePCM(url: baseURL)
-    ACLog("AUDIO analyzeAudio done rms=\(String(format: "%.1f", analysis.averageRMS)) leading=\(String(format: "%.2f", analysis.leadingSilence)) duration=\(String(format: "%.2f", analysis.duration))", level: .debug)
-        audioAnalysisCache[url] = analysis
-        return analysis
+        let baseAnalysis = try await analyzePCM(url: baseURL)
+    ACLog("AUDIO analyzeAudio done rms=\(String(format: "%.1f", baseAnalysis.averageRMS)) leading=\(String(format: "%.2f", baseAnalysis.leadingSilence)) duration=\(String(format: "%.2f", baseAnalysis.duration))", level: .debug)
+
+        if let enhancedURL = try? await createSpeechEnhancedAudio(from: baseURL, analysis: baseAnalysis) {
+            debugAudioFile(enhancedURL, label: "analysis.denoised")
+            let enhancedAnalysis = try await analyzePCM(url: enhancedURL)
+            ACLog("AUDIO denoise applied rms=\(String(format: "%.1f", enhancedAnalysis.averageRMS)) leading=\(String(format: "%.2f", enhancedAnalysis.leadingSilence)) file=\(enhancedURL.lastPathComponent)", level: .info)
+            audioAnalysisCache[url] = enhancedAnalysis
+            return enhancedAnalysis
+        }
+
+        audioAnalysisCache[url] = baseAnalysis
+        return baseAnalysis
     }
     
     // NEW: Segmentation + transcription for large or fallback paths
@@ -325,7 +347,16 @@ final class LocalTranscriptionService {
         writer.startWriting(); reader.startReading(); writer.startSession(atSourceTime: .zero)
         return try await withCheckedThrowingContinuation { cont in
             let queue = DispatchQueue(label: "pcm.extract")
+            let inputBox = UncheckedSendableBox(input)
+            let readerBox = UncheckedSendableBox(reader)
+            let outputBox = UncheckedSendableBox(output)
+            let writerBox = UncheckedSendableBox(writer)
             input.requestMediaDataWhenReady(on: queue) {
+                let input = inputBox.value
+                let reader = readerBox.value
+                let output = outputBox.value
+                let writer = writerBox.value
+
                 while input.isReadyForMoreMediaData {
                     if reader.status == .reading, let sample = output.copyNextSampleBuffer() {
                         if !input.append(sample) { reader.cancelReading(); input.markAsFinished(); break }
@@ -370,6 +401,58 @@ final class LocalTranscriptionService {
                 }
             }
         }
+    }
+
+    private func createSpeechEnhancedAudio(from url: URL, analysis: AudioAnalysis) async throws -> URL? {
+        if let cached = audioExtractionCache[url], FileManager.default.fileExists(atPath: cached.path) {
+            return cached
+        }
+
+        let pcmURL = try await extractLinearPCMAudio(url: url)
+        let inputFile = try AVAudioFile(forReading: pcmURL)
+        let format = inputFile.processingFormat
+        guard format.channelCount > 0 else { return nil }
+
+        let noiseFloor = try estimateNoiseFloor(for: inputFile, analysis: analysis)
+        let gateThreshold = max(noiseFloor * denoiseGatePadding, dbToLinear(denoiseGateFloorDB))
+        let releaseThreshold = gateThreshold * 2.6
+        let outURL = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString + "_denoise.caf")
+        try? FileManager.default.removeItem(at: outURL)
+
+        let outputSettings: [String: Any] = [
+            AVFormatIDKey: kAudioFormatLinearPCM,
+            AVLinearPCMIsBigEndianKey: false,
+            AVLinearPCMIsFloatKey: true,
+            AVLinearPCMBitDepthKey: 32,
+            AVLinearPCMIsNonInterleaved: true,
+            AVNumberOfChannelsKey: 1,
+            AVSampleRateKey: format.sampleRate
+        ]
+        let outputFile = try AVAudioFile(
+            forWriting: outURL,
+            settings: outputSettings,
+            commonFormat: .pcmFormatFloat32,
+            interleaved: false
+        )
+
+        inputFile.framePosition = 0
+        let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: denoiseChunkFrameCount)!
+        var filterState = HighPassFilterState(sampleRate: format.sampleRate, cutoff: denoiseCutoffFrequency)
+
+        while true {
+            try inputFile.read(into: buffer, frameCount: denoiseChunkFrameCount)
+            if buffer.frameLength == 0 { break }
+            processDenoiseBuffer(
+                buffer,
+                gateThreshold: gateThreshold,
+                releaseThreshold: releaseThreshold,
+                filterState: &filterState
+            )
+            try outputFile.write(from: buffer)
+        }
+
+        audioExtractionCache[url] = outURL
+        return outURL
     }
     
     // Add missing M4A export helper
@@ -432,6 +515,70 @@ final class LocalTranscriptionService {
         let leadingSilence = Double(leadingSilenceFrames) / sampleRate
         return AudioAnalysis(duration: duration, fileSize: fileSize(url: url), averageRMS: avgDB, leadingSilence: leadingSilence, url: url)
     }
+
+    private func estimateNoiseFloor(for file: AVAudioFile, analysis: AudioAnalysis) throws -> Float {
+        let format = file.processingFormat
+        let sampleRate = format.sampleRate
+        let candidateSeconds: Double
+        if analysis.leadingSilence >= 0.2 {
+            candidateSeconds = min(analysis.leadingSilence, 1.5)
+        } else {
+            candidateSeconds = min(max(analysis.duration * 0.08, 0.2), 0.8)
+        }
+
+        let frameCount = AVAudioFrameCount(max(1, Int(sampleRate * candidateSeconds)))
+        file.framePosition = 0
+        let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount)!
+        try file.read(into: buffer, frameCount: frameCount)
+        defer { file.framePosition = 0 }
+
+        guard let channel = buffer.floatChannelData?[0] else {
+            return dbToLinear(denoiseGateFloorDB)
+        }
+
+        let usedFrames = Int(buffer.frameLength)
+        guard usedFrames > 0 else {
+            return dbToLinear(denoiseGateFloorDB)
+        }
+
+        var sumSquares: Float = 0
+        for idx in 0..<usedFrames {
+            let value = channel[idx]
+            sumSquares += value * value
+        }
+        let rms = sqrt(sumSquares / Float(max(usedFrames, 1)))
+        return max(rms, dbToLinear(denoiseGateFloorDB))
+    }
+
+    private func processDenoiseBuffer(
+        _ buffer: AVAudioPCMBuffer,
+        gateThreshold: Float,
+        releaseThreshold: Float,
+        filterState: inout HighPassFilterState
+    ) {
+        guard let channel = buffer.floatChannelData?[0] else { return }
+        let frameLength = Int(buffer.frameLength)
+        let minGain: Float = 0.10
+
+        for idx in 0..<frameLength {
+            let filtered = filterState.process(channel[idx])
+            let magnitude = abs(filtered)
+
+            let gateGain: Float
+            if magnitude <= gateThreshold {
+                let t = magnitude / max(gateThreshold, 0.0001)
+                gateGain = minGain + ((0.42 - minGain) * t)
+            } else if magnitude < releaseThreshold {
+                let t = (magnitude - gateThreshold) / max(releaseThreshold - gateThreshold, 0.0001)
+                gateGain = 0.42 + (0.58 * t)
+            } else {
+                gateGain = 1.0
+            }
+
+            let amplified = filtered * gateGain * denoiseMakeupGain
+            channel[idx] = max(-1, min(1, amplified))
+        }
+    }
     
     // Timeout wrapper
     private func runRecognizerWithTimeout(url: URL, localeIdentifier: String, stage: String) async throws -> [CaptionSegment] {
@@ -459,6 +606,25 @@ final class LocalTranscriptionService {
     }
     private func dbToLinear(_ db: Float) -> Float { pow(10, db/20) }
     private func linearToDB(_ lin: Float) -> Double { lin > 0 ? Double(20*log10(lin)) : -160 }
+
+    private struct HighPassFilterState {
+        private let alpha: Float
+        private var previousInput: Float = 0
+        private var previousOutput: Float = 0
+
+        init(sampleRate: Double, cutoff: Double) {
+            let rc = 1.0 / (2.0 * Double.pi * cutoff)
+            let dt = 1.0 / sampleRate
+            self.alpha = Float(rc / (rc + dt))
+        }
+
+        mutating func process(_ input: Float) -> Float {
+            let output = alpha * (previousOutput + input - previousInput)
+            previousInput = input
+            previousOutput = output
+            return output
+        }
+    }
     
     private func runRecognizer(url: URL, localeIdentifier: String) async throws -> [CaptionSegment] {
         if let attrs = try? FileManager.default.attributesOfItem(atPath: url.path), let sz = attrs[.size] as? NSNumber, sz.intValue < 4000 {

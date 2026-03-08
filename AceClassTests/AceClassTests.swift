@@ -2,6 +2,13 @@ import XCTest
 @testable import AceClass
 
 final class AceClassTests: XCTestCase {
+    func testSupportedVideoExtensionsIncludeAdditionalFormats() {
+        XCTAssertTrue(AppState.supportedVideoExtensions.contains("avi"))
+        XCTAssertTrue(AppState.supportedVideoExtensions.contains("mpeg"))
+        XCTAssertTrue(AppState.supportedVideoExtensions.contains("mts"))
+        XCTAssertTrue(AppState.supportedVideoExtensions.contains("3gp"))
+    }
+
     func testStorageKeyIsStableForEquivalentFolderURLs() {
         let plainURL = URL(fileURLWithPath: "/Volumes/Classes/Math101")
         let normalizedURL = URL(fileURLWithPath: "/Volumes/Classes/Math101/")
@@ -44,6 +51,12 @@ final class AceClassTests: XCTestCase {
         XCTAssertEqual(decoded.relativePath, "Week01/week1.mp4")
     }
 
+    func testVideoItemDoesNotAutofillNoteFromFileName() {
+        let item = VideoItem(fileName: "week1.mp4")
+
+        XCTAssertEqual(item.note, "")
+    }
+
     @MainActor
     func testLoadCoursesSupportsMixedRootVideosAndCourseFolders() async throws {
         let rootURL = try makeTempDirectory()
@@ -61,6 +74,27 @@ final class AceClassTests: XCTestCase {
 
         XCTAssertTrue(loaded)
         XCTAssertEqual(appState.courses.count, 2)
+    }
+
+    @MainActor
+    func testLoadCoursesRecognizesAdditionalSupportedFormats() async throws {
+        let rootURL = try makeTempDirectory()
+        let lectureURL = rootURL.appendingPathComponent("Lecture", isDirectory: true)
+        let archiveURL = rootURL.appendingPathComponent("Archive", isDirectory: true)
+
+        try FileManager.default.createDirectory(at: lectureURL, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: archiveURL, withIntermediateDirectories: true)
+        try Data().write(to: lectureURL.appendingPathComponent("lesson01.avi"))
+        try Data().write(to: archiveURL.appendingPathComponent("review01.mts"))
+
+        let appState = AppState(loadPersistedBookmark: false)
+        await appState.loadCourses(from: rootURL)
+        let loaded = await waitUntil(timeoutNanoseconds: 2_000_000_000) {
+            Set(appState.courses.map { $0.folderURL.lastPathComponent }) == ["Lecture", "Archive"]
+        }
+
+        XCTAssertTrue(loaded)
+        XCTAssertEqual(Set(appState.courses.map(\.folderURL.lastPathComponent)), ["Lecture", "Archive"])
     }
 
     @MainActor
@@ -84,6 +118,54 @@ final class AceClassTests: XCTestCase {
         let names = Set(appState.courses.map { $0.folderURL.lastPathComponent })
         XCTAssertTrue(loaded)
         XCTAssertEqual(names, ["Biology", "Chemistry"])
+    }
+
+    @MainActor
+    func testLoadCoursesTraversesWrapperFoldersToReachNestedCourse() async throws {
+        let rootURL = try makeTempDirectory()
+        let ignoredURL = rootURL.appendingPathComponent("00_管理", isDirectory: true)
+        let courseVideoURL = rootURL
+            .appendingPathComponent("科目分類", isDirectory: true)
+            .appendingPathComponent("英文", isDirectory: true)
+            .appendingPathComponent("高二下英文", isDirectory: true)
+            .appendingPathComponent("單元_未分類", isDirectory: true)
+
+        try FileManager.default.createDirectory(at: ignoredURL, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: courseVideoURL, withIntermediateDirectories: true)
+        try Data().write(to: courseVideoURL.appendingPathComponent("1140412.mkv"))
+
+        let appState = AppState(loadPersistedBookmark: false)
+        await appState.loadCourses(from: rootURL)
+        let loaded = await waitUntil(timeoutNanoseconds: 2_000_000_000) {
+            appState.courses.count == 1
+        }
+
+        XCTAssertTrue(loaded)
+        XCTAssertEqual(appState.courses.map(\.folderURL.lastPathComponent), ["高二下英文"])
+    }
+
+    @MainActor
+    func testLoadCoursesKeepsParentAsCourseWhenUnitsAndChaptersCoexist() async throws {
+        let rootURL = try makeTempDirectory()
+        let courseURL = rootURL
+            .appendingPathComponent("數學", isDirectory: true)
+            .appendingPathComponent("第六冊+複習", isDirectory: true)
+        let chapterURL = courseURL.appendingPathComponent("二次曲線", isDirectory: true)
+        let genericUnitURL = courseURL.appendingPathComponent("單元_未分類", isDirectory: true)
+
+        try FileManager.default.createDirectory(at: chapterURL, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: genericUnitURL, withIntermediateDirectories: true)
+        try Data().write(to: chapterURL.appendingPathComponent("chapter01.mp4"))
+        try Data().write(to: genericUnitURL.appendingPathComponent("week01.mp4"))
+
+        let appState = AppState(loadPersistedBookmark: false)
+        await appState.loadCourses(from: rootURL)
+        let loaded = await waitUntil(timeoutNanoseconds: 2_000_000_000) {
+            appState.courses.count == 1
+        }
+
+        XCTAssertTrue(loaded)
+        XCTAssertEqual(appState.courses.map(\.folderURL.lastPathComponent), ["第六冊+複習"])
     }
 
     private func makeTempDirectory() throws -> URL {

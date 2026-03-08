@@ -1,5 +1,8 @@
 import Foundation
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 // MARK: - LogLevel
 enum LogLevel: String, CaseIterable, Codable, Identifiable {
@@ -145,12 +148,12 @@ final class Logger: ObservableObject {
     }
     private func scheduleFlush() {
         let interval = flushInterval
-        Task { [weak self] in
+        Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
-            await self?.flushNow()
+            self?.flushNow()
         }
     }
-    @MainActor private func flushNow() {
+    private func flushNow() {
         let lines = pendingLines
         pendingLines.removeAll()
         flushTaskScheduled = false
@@ -215,85 +218,200 @@ final class Logger: ObservableObject {
 
 // MARK: - Debug Console View
 struct DebugConsoleView: View {
+    let appState: AppState?
     @ObservedObject private var logger = Logger.shared
     @Environment(\.dismiss) private var dismiss
     @State private var autoScroll = true
+    @State private var searchText = ""
     @State private var cacheCount: Int = 0
     @State private var cacheBytes: Int64 = 0
     @State private var isClearingCache = false
     
     var body: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: 16) {
             header
-            Divider()
+            summaryGrid
+            controlsBar
             logList
-            Divider()
             footer
         }
-        .frame(minWidth: 800, minHeight: 500)
-        .task(id: logger.filteredEntries.count) {
-            // Keep at bottom if autoScroll
-        }
-    .onAppear { loadCacheStats() }
+        .padding(16)
+        .frame(minWidth: 980, minHeight: 640)
+        .background(
+            LinearGradient(
+                colors: [Color.accentColor.opacity(0.05), Color.clear],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+        .onAppear { loadCacheStats() }
     }
     
     private var header: some View {
-        HStack {
-            Text("偵錯主控台").font(.title3).bold()
+        HStack(alignment: .top, spacing: 16) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(L10n.tr("debug.title"))
+                    .font(.title2.weight(.bold))
+                Text(L10n.tr("debug.subtitle"))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
             Spacer()
-            Picker("層級", selection: $logger.filterLevel) {
-                Text("全部").tag(LogLevel?.none)
+
+            HStack(spacing: 10) {
+                Toggle(L10n.tr("debug.logging_enabled"), isOn: $logger.loggingEnabled)
+                    .toggleStyle(.switch)
+
+                Picker(L10n.tr("debug.minimum_level"), selection: $logger.minimumLevel) {
+                    ForEach(LogLevel.allCases) { level in
+                        Text(level.rawValue).tag(level)
+                    }
+                }
+                .pickerStyle(.menu)
+
+                Button { dismiss() } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(18)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.24))
+        )
+    }
+    
+    private var summaryGrid: some View {
+        HStack(spacing: 12) {
+            DebugMetricCard(
+                title: L10n.tr("debug.metric.visible"),
+                value: "\(displayedEntries.count)",
+                detail: L10n.tr("debug.metric.total_entries", logger.entries.count),
+                tint: .blue,
+                systemImage: "text.alignleft"
+            )
+            DebugMetricCard(
+                title: L10n.tr("debug.metric.warnings"),
+                value: "\(entriesCount(for: .warn))",
+                detail: L10n.tr("debug.metric.errors", entriesCount(for: .error) + entriesCount(for: .critical)),
+                tint: .orange,
+                systemImage: "exclamationmark.triangle"
+            )
+            DebugMetricCard(
+                title: L10n.tr("debug.metric.cache"),
+                value: "\(cacheCount)",
+                detail: sizeString(cacheBytes),
+                tint: .teal,
+                systemImage: "internaldrive"
+            )
+            runtimeStatusCard
+        }
+    }
+
+    private var runtimeStatusCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label(L10n.tr("debug.runtime_status"), systemImage: "waveform.path.ecg")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text(playerStateText)
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(playerStateColor)
+                    .padding(.vertical, 4)
+                    .padding(.horizontal, 8)
+                    .background(playerStateColor.opacity(0.12), in: Capsule())
+            }
+
+            DebugKeyValueRow(key: L10n.tr("debug.key.source"), value: appState?.sourceFolderURL?.lastPathComponent ?? L10n.tr("debug.not_selected"))
+            DebugKeyValueRow(key: L10n.tr("debug.key.course"), value: appState?.selectedCourse?.displayTitle ?? L10n.tr("debug.not_selected"))
+            DebugKeyValueRow(key: L10n.tr("debug.key.video"), value: appState?.currentVideo?.resolvedTitle ?? L10n.tr("debug.not_playing"))
+            if let detail = appState?.playerLoadingDetail, !detail.isEmpty, appState?.isInitializingPlayer == true {
+                DebugKeyValueRow(key: L10n.tr("debug.key.loading"), value: detail)
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.20))
+        )
+    }
+
+    private var controlsBar: some View {
+        HStack(spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                TextField(L10n.tr("debug.search_placeholder"), text: $searchText)
+                    .textFieldStyle(.plain)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+            Picker(L10n.tr("debug.display_level"), selection: $logger.filterLevel) {
+                Text(L10n.tr("common.all")).tag(LogLevel?.none)
                 ForEach(LogLevel.allCases) { level in
                     Text(level.rawValue).tag(LogLevel?.some(level))
                 }
             }
             .pickerStyle(.menu)
-            Toggle("自動捲動", isOn: $autoScroll).toggleStyle(.switch)
+
+            Toggle(L10n.tr("common.auto_scroll"), isOn: $autoScroll)
+                .toggleStyle(.switch)
+
+            Spacer()
+
             Button(role: .destructive) { logger.clear() } label: {
-                Label("清除", systemImage: "trash")
+                Label(L10n.tr("debug.clear_records"), systemImage: "trash")
             }
+
+            Button { copyVisibleLogs() } label: {
+                Label(L10n.tr("debug.copy_visible"), systemImage: "doc.on.doc")
+            }
+
             Button { exportLog() } label: {
-                Label("匯出", systemImage: "square.and.arrow.up")
+                Label(L10n.tr("debug.open_log"), systemImage: "square.and.arrow.up")
             }
-            Button { dismiss() } label: {
-                Image(systemName: "xmark.circle.fill")
-            }
-            .buttonStyle(.borderless)
         }
-        .padding(8)
     }
-    
+
     private var logList: some View {
         ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 2) {
-                    ForEach(logger.filteredEntries) { entry in
-                        HStack(alignment: .firstTextBaseline, spacing: 6) {
-                            Text(entry.formattedTime)
-                                .font(.system(.caption, design: .monospaced))
-                                .foregroundColor(.secondary)
-                                .frame(width: 90, alignment: .leading)
-                            Image(systemName: entry.level.symbol)
-                                .foregroundColor(entry.level.color)
-                                .frame(width: 18)
-                            Text(entry.level.rawValue)
-                                .font(.system(.caption2, design: .monospaced))
-                                .padding(.horizontal, 4)
-                                .padding(.vertical, 2)
-                                .background(entry.level.color.opacity(0.15))
-                                .cornerRadius(4)
-                            Text(entry.message)
-                                .font(.system(.caption, design: .monospaced))
-                                .textSelection(.enabled)
-                            Spacer(minLength: 0)
+            Group {
+                if displayedEntries.isEmpty {
+                    ContentUnavailableView(
+                        L10n.tr("debug.empty_title"),
+                        systemImage: "text.magnifyingglass",
+                        description: Text(searchText.isEmpty ? L10n.tr("debug.empty_subtitle") : L10n.tr("debug.empty_search_subtitle"))
+                    )
+                } else {
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 8) {
+                            ForEach(displayedEntries) { entry in
+                                DebugLogRow(entry: entry)
+                                    .id(entry.id)
+                            }
                         }
-                        .id(entry.id)
-                        .padding(.horizontal, 4)
+                        .padding(12)
                     }
                 }
             }
-            .onChange(of: logger.filteredEntries.count) { _, _ in
-                if autoScroll, let last = logger.filteredEntries.last {
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.20))
+            )
+            .onChange(of: displayedEntries.count) { _, _ in
+                if autoScroll, let last = displayedEntries.last {
                     withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
                 }
             }
@@ -301,37 +419,57 @@ struct DebugConsoleView: View {
     }
     
     private var footer: some View {
-        HStack {
-            Text("目前記憶體內紀錄: \(logger.entries.count) 行").font(.caption).foregroundColor(.secondary)
-            Spacer()
-            VStack(alignment: .trailing, spacing: 2) {
-                HStack(spacing: 8) {
-                    Text("快取影片: \(cacheCount) 個").font(.caption).foregroundColor(.secondary)
-                    Text(sizeString(cacheBytes)).font(.caption).foregroundColor(.secondary)
-                    Button(action: { loadCacheStats() }) {
-                        Image(systemName: "arrow.clockwise")
-                    }.help("刷新快取統計").buttonStyle(.borderless)
-                    Button(role: .destructive) {
-                        clearCache()
-                    } label: {
-                        if isClearingCache { ProgressView().scaleEffect(0.6) } else { Text("清除快取").font(.caption) }
-                    }
-                    .disabled(isClearingCache || (cacheCount == 0))
-                }
-                Text("Log 檔案: \(Logger.shared.exportLog()?.path ?? "-")")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
+        HStack(alignment: .center) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(L10n.tr("debug.log_file"))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text(Logger.shared.exportLog()?.path ?? "-")
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
+
+            Spacer()
+
+            HStack(spacing: 10) {
+                Button(action: { loadCacheStats() }) {
+                    Label(L10n.tr("debug.refresh_cache"), systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.bordered)
+
+                Button(role: .destructive) {
+                    clearCache()
+                } label: {
+                    if isClearingCache {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Label(L10n.tr("debug.clear_cache"), systemImage: "trash")
+                    }
+                }
+                .buttonStyle(.bordered)
+                .disabled(isClearingCache || cacheCount == 0)
+            }
         }
-        .padding(6)
+        .padding(.horizontal, 4)
     }
     
     private func exportLog() {
         guard let url = Logger.shared.exportLog() else { return }
         // macOS share: show in Finder
         NSWorkspace.shared.activateFileViewerSelecting([url])
+    }
+
+    private func copyVisibleLogs() {
+        let text = displayedEntries
+            .map { "\($0.formattedTime) [\($0.level.rawValue)] \($0.message)" }
+            .joined(separator: "\n")
+        guard !text.isEmpty else { return }
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
     }
 
     // MARK: - Cache Helpers
@@ -357,6 +495,130 @@ struct DebugConsoleView: View {
         var idx = 0
         while value > 1024 && idx < units.count-1 { value /= 1024; idx += 1 }
         return String(format: "%.2f %@", value, units[idx])
+    }
+
+    private var displayedEntries: [LogEntry] {
+        let base = logger.filteredEntries
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return base }
+        return base.filter { entry in
+            entry.message.localizedCaseInsensitiveContains(query) ||
+            entry.level.rawValue.localizedCaseInsensitiveContains(query)
+        }
+    }
+
+    private func entriesCount(for level: LogLevel) -> Int {
+        displayedEntries.filter { $0.level == level }.count
+    }
+
+    private var playerStateText: String {
+        guard let appState else { return L10n.tr("debug.player_state.disconnected") }
+        if appState.isInitializingPlayer {
+            return appState.playerLoadingTitle ?? L10n.tr("debug.player_state.initializing")
+        }
+        if appState.player != nil {
+            return L10n.tr("debug.player_state.ready")
+        }
+        if appState.currentVideo != nil {
+            return L10n.tr("debug.player_state.selected")
+        }
+        return L10n.tr("debug.player_state.idle")
+    }
+
+    private var playerStateColor: Color {
+        guard let appState else { return .secondary }
+        if appState.isInitializingPlayer {
+            return .orange
+        }
+        if appState.player != nil {
+            return .green
+        }
+        return .secondary
+    }
+}
+
+private struct DebugMetricCard: View {
+    let title: String
+    let value: String
+    let detail: String
+    let tint: Color
+    let systemImage: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label(title, systemImage: systemImage)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+            Text(value)
+                .font(.title2.weight(.bold))
+                .foregroundStyle(tint)
+            Text(detail)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(tint.opacity(0.08), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .strokeBorder(tint.opacity(0.16))
+        )
+    }
+}
+
+private struct DebugKeyValueRow: View {
+    let key: String
+    let value: String
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text(key)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 38, alignment: .leading)
+            Text(value)
+                .font(.caption.monospaced())
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Spacer(minLength: 0)
+        }
+    }
+}
+
+private struct DebugLogRow: View {
+    let entry: LogEntry
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text(entry.formattedTime)
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                Label(entry.level.rawValue, systemImage: entry.level.symbol)
+                    .font(.system(.caption2, design: .monospaced).weight(.semibold))
+                    .foregroundStyle(entry.level.color)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(entry.level.color.opacity(0.12), in: Capsule())
+                Spacer()
+            }
+
+            Text(entry.message)
+                .font(.system(.caption, design: .monospaced))
+                .foregroundStyle(.primary)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(12)
+        .background(Color.primary.opacity(0.03), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(entry.level.color.opacity(0.10))
+        )
     }
 }
 

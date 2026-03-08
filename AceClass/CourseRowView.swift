@@ -38,7 +38,7 @@ struct CourseRowView: View {
             }
 
             HStack(spacing: 8) {
-                MetadataChip(item: MetadataChipItem(title: "\(course.totalVideoCount) 部影片", systemImage: "film.stack", tint: .blue))
+                MetadataChip(item: MetadataChipItem(title: L10n.tr("course.video_count", course.totalVideoCount), systemImage: "film.stack", tint: .blue))
                 MetadataChip(item: MetadataChipItem(title: course.completionText, systemImage: "checkmark.circle", tint: .green))
             }
 

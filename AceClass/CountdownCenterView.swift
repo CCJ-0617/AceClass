@@ -12,9 +12,17 @@ struct CountdownCenterView: View {
     @State private var selectedCourseID: UUID? = nil
     
     enum Sort: String, CaseIterable, Identifiable {
-        case byDays = "依天數"
-        case byName = "依名稱"
+        case byDays
+        case byName
+
         var id: String { rawValue }
+
+        var localizedTitle: String {
+            switch self {
+            case .byDays: return L10n.tr("common.by_days")
+            case .byName: return L10n.tr("common.by_name")
+            }
+        }
     }
     
     var body: some View {
@@ -22,14 +30,14 @@ struct CountdownCenterView: View {
             sidebar
             editor
         }
-        .navigationTitle("倒數中心")
+        .navigationTitle(L10n.tr("countdown.center.title"))
         .frame(minWidth: 900, minHeight: 600)
         .onAppear {
             selectedCourseID = initialSelectedCourseID ?? appState.courses.first?.id
         }
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
-                Button("關閉") { dismiss() }
+                Button(L10n.tr("common.close")) { dismiss() }
             }
         }
     }
@@ -39,18 +47,18 @@ struct CountdownCenterView: View {
         VStack(spacing: 0) {
             // Controls
             HStack(spacing: 10) {
-                TextField("搜尋課程…", text: $searchText)
+                TextField(L10n.tr("common.search_courses"), text: $searchText)
                     .textFieldStyle(.roundedBorder)
                 
-                Picker("排序", selection: $sort) {
-                    ForEach(Sort.allCases) { s in Text(s.rawValue).tag(s) }
+                Picker(L10n.tr("common.sort"), selection: $sort) {
+                    ForEach(Sort.allCases) { s in Text(s.localizedTitle).tag(s) }
                 }
                 .pickerStyle(.segmented)
             }
             .padding(.horizontal)
             .padding(.top, 12)
             
-            Toggle("只顯示已設定目標", isOn: $showOnlyWithTargets)
+            Toggle(L10n.tr("countdown.center.show_only_targets"), isOn: $showOnlyWithTargets)
                 .toggleStyle(.switch)
                 .padding(.top, 12)
                 .padding(.horizontal)
@@ -116,7 +124,7 @@ struct CountdownCenterView: View {
                     Image(systemName: "calendar.badge.clock")
                         .font(.system(size: 64))
                         .foregroundColor(.secondary)
-                    Text("選擇左側課程以編輯倒數設定")
+                    Text(L10n.tr("countdown.center.empty_editor"))
                         .foregroundColor(.secondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -155,17 +163,17 @@ struct CourseDeadlineEditor: View {
                 Text(course.folderURL.lastPathComponent)
                     .font(.title2).bold()
                 if let targetDate = course.targetDate {
-                    Text("目前目標：\(targetDate.formatted(date: .long, time: .omitted))")
+                    Text(L10n.tr("countdown.center.current_target", targetDate.formatted(date: .long, time: .omitted)))
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
             }
             Spacer()
-            Button("清除目標") {
+            Button(L10n.tr("countdown.center.clear_target")) {
                 Task { await save(targetDate: nil, description: "") }
             }
             .disabled(!hasTargetDate || isSaving)
-            Button(isSaving ? "保存中…" : "保存設定") {
+            Button(isSaving ? L10n.tr("common.saving") : L10n.tr("common.save")) {
                 Task { await save(targetDate: hasTargetDate ? date : nil, description: description) }
             }
             .buttonStyle(.borderedProminent)
@@ -175,7 +183,7 @@ struct CourseDeadlineEditor: View {
     
     private var form: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Toggle("設定目標日期", isOn: $hasTargetDate)
+            Toggle(L10n.tr("countdown.center.set_target_date"), isOn: $hasTargetDate)
                 .onChange(of: hasTargetDate) { _, newValue in
                     if !newValue {
                         // 即時清空輸入但不立刻保存，交由使用者按「清除目標」或「保存設定」
@@ -185,10 +193,10 @@ struct CourseDeadlineEditor: View {
             
             if hasTargetDate {
                 HStack(alignment: .center, spacing: 16) {
-                    DatePicker("目標日期", selection: $date, displayedComponents: .date)
+                    DatePicker(L10n.tr("countdown.center.target_date"), selection: $date, displayedComponents: .date)
                         .datePickerStyle(.compact)
                     
-                    TextField("目標描述（例如：期末考、作業截止）", text: $description)
+                    TextField(L10n.tr("countdown.center.target_description_placeholder"), text: $description)
                         .textFieldStyle(.roundedBorder)
                 }
                 
@@ -206,7 +214,7 @@ struct CourseDeadlineEditor: View {
     
     private var preview: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("預覽").font(.headline)
+            Text(L10n.tr("common.preview")).font(.headline)
             HStack {
                 CountdownDisplay(course: previewCourse)
                 Spacer()
@@ -226,7 +234,14 @@ struct CourseDeadlineEditor: View {
     }
     
     private var presets: [(title: String, days: Int)] {
-        [("+7天",7),("+14天",14),("+30天",30),("+60天",60),("+90天",90),("+180天",180)]
+        [
+            (L10n.tr("countdown.quick.plus_days", 7), 7),
+            (L10n.tr("countdown.quick.plus_days", 14), 14),
+            (L10n.tr("countdown.quick.plus_days", 30), 30),
+            (L10n.tr("countdown.quick.plus_days", 60), 60),
+            (L10n.tr("countdown.quick.plus_days", 90), 90),
+            (L10n.tr("countdown.quick.plus_days", 180), 180)
+        ]
     }
     
     private func load() {

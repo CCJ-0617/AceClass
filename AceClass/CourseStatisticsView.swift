@@ -30,11 +30,11 @@ struct UnwatchedVideosListView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("待觀看影片")
+            Text(L10n.tr("course.pending_videos"))
                 .font(.headline)
 
             if unwatchedVideos.isEmpty {
-                Text("這門課目前沒有待觀看影片。")
+                Text(L10n.tr("course.no_pending_videos"))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .padding(.vertical, 10)
@@ -59,48 +59,54 @@ struct CourseStatisticsView: View {
     let playUnwatchedVideoAction: (VideoItem) async -> Void
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                headerCard
+        GeometryReader { geometry in
+            let contentWidth = max(geometry.size.width - 48, 0)
 
-                HStack(spacing: 12) {
-                    MetricCard(title: "總影片", value: "\(stats.totalVideos)", tint: .blue)
-                    MetricCard(title: "已完成", value: "\(stats.watchedVideos)", tint: .green)
-                    MetricCard(title: "待完成", value: "\(stats.unwatchedCount)", tint: .orange)
-                }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    headerCard
 
-                HStack(alignment: .center, spacing: 24) {
-                    progressRing
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("學習進度")
-                            .font(.headline)
-                        Text(course.learningStatusText)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                    HStack(spacing: 12) {
+                    MetricCard(title: L10n.tr("metric.total_videos"), value: "\(stats.totalVideos)", tint: .blue)
+                    MetricCard(title: L10n.tr("metric.completed"), value: "\(stats.watchedVideos)", tint: .green)
+                    MetricCard(title: L10n.tr("metric.pending"), value: "\(stats.unwatchedCount)", tint: .orange)
+                    }
 
-                        ProgressView(value: stats.percentageWatched)
-                            .tint(course.unwatchedVideoCount == 0 ? .green : .accentColor)
+                    HStack(alignment: .center, spacing: 24) {
+                        progressRing
+                        VStack(alignment: .leading, spacing: 12) {
+                        Text(L10n.tr("course.progress_header"))
+                                .font(.headline)
+                            Text(course.learningStatusText)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
 
-                        HStack(spacing: 8) {
-                            MetadataChip(item: MetadataChipItem(title: course.completionText, systemImage: "checkmark.circle", tint: .green))
-                            if let targetSummaryText = course.targetSummaryText {
-                                MetadataChip(item: MetadataChipItem(title: targetSummaryText, systemImage: "calendar.badge.clock", tint: .orange))
+                            ProgressView(value: stats.percentageWatched)
+                                .tint(course.unwatchedVideoCount == 0 ? .green : .accentColor)
+
+                            HStack(spacing: 8) {
+                                MetadataChip(item: MetadataChipItem(title: course.completionText, systemImage: "checkmark.circle", tint: .green))
+                                if let targetSummaryText = course.targetSummaryText {
+                                    MetadataChip(item: MetadataChipItem(title: targetSummaryText, systemImage: "calendar.badge.clock", tint: .orange))
+                                }
                             }
                         }
+                        Spacer()
                     }
-                    Spacer()
-                }
-                .padding(22)
-                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+                    .padding(22)
+                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
 
-                UnwatchedVideosListView(
-                    unwatchedVideos: unwatchedVideos,
-                    playAction: playUnwatchedVideoAction
-                )
-                .padding(22)
-                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+                    UnwatchedVideosListView(
+                        unwatchedVideos: unwatchedVideos,
+                        playAction: playUnwatchedVideoAction
+                    )
+                    .padding(22)
+                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+                }
+                .frame(width: contentWidth, alignment: .leading)
+                .padding(24)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(24)
         }
     }
 
@@ -109,13 +115,14 @@ struct CourseStatisticsView: View {
             Text(course.displayTitle)
                 .font(.system(size: 32, weight: .bold, design: .rounded))
 
-            Text("在右側選擇影片即可開始播放；這裡會先整理這門課的進度與剩餘內容。")
+            Text(L10n.tr("course.statistics_intro"))
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
             FlowMetadataRow(items: headerMetadata)
         }
         .padding(22)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             LinearGradient(
                 colors: [Color.accentColor.opacity(0.18), Color.accentColor.opacity(0.05)],
@@ -154,7 +161,7 @@ struct CourseStatisticsView: View {
             VStack(spacing: 4) {
                 Text(stats.formattedPercentage)
                     .font(.title.bold())
-                Text("完成")
+                Text(L10n.tr("course.completed_short"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

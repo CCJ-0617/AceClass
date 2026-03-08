@@ -5,7 +5,7 @@ AceClass is a macOS SwiftUI app for managing recorded class videos stored in fol
 ## Highlights
 
 - Scan a root folder and treat each child folder as a course.
-- Play `.mp4` videos with a native macOS player and full-screen support.
+- Play common video formats such as `.mp4`, `.mov`, `.m4v`, `.mkv`, `.avi`, `.mpeg`, `.mts`, and `.3gp` with a native macOS player and full-screen support.
 - Track watched status, notes, and last playback position per video.
 - Auto-mark a video as watched after roughly 75% playback progress.
 - Manage course deadlines in the Countdown Center.
@@ -16,7 +16,7 @@ AceClass is a macOS SwiftUI app for managing recorded class videos stored in fol
 
 - macOS 15.4 or later
 - Xcode 16 or later for development
-- Course videos stored as `.mp4`
+- Course videos stored in one of the supported formats: `.mp4`, `.mov`, `.m4v`, `.mkv`, `.avi`, `.mpg`, `.mpeg`, `.mts`, `.m2ts`, `.ts`, `.3gp`, `.3g2`
 
 ## Folder Layout
 

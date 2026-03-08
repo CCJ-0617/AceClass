@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import AppIntents
 
 @main
 struct AceClassApp: App {
@@ -21,7 +22,7 @@ struct AceClassApp: App {
                 Button(action: {
                     toggleFullScreen()
                 }) {
-                    Text("進入/離開全螢幕")
+                    Text(L10n.tr("app.fullscreen_toggle"))
                 }
                 .keyboardShortcut("f", modifiers: [.control, .command])
             }
