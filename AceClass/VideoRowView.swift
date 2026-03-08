@@ -7,86 +7,114 @@
 
 import SwiftUI
 
-// 1. 簡化 VideoRowView，移除播放器，只負責顯示資訊和高亮
 struct VideoRowView: View {
     @Binding var video: VideoItem
     let isPlaying: Bool
     let playAction: () async -> Void
     let saveAction: () async -> Void
 
-    // 1. 新增日期格式化工具
-    private var formattedDate: String {
-        guard let date = video.date else { return "" }
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.string(from: date)
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                Button(action: play) {
+                    ZStack {
+                        Circle()
+                            .fill((isPlaying ? Color.accentColor : .blue).opacity(0.12))
+                            .frame(width: 40, height: 40)
+                        Image(systemName: isPlaying ? "speaker.wave.2.circle.fill" : "play.circle.fill")
+                            .font(.title2)
+                            .foregroundStyle(isPlaying ? Color.accentColor : .blue)
+                    }
+                }
+                .buttonStyle(.plain)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    TextField("影片標題", text: $video.displayName)
+                        .font(.headline)
+                        .textFieldStyle(.plain)
+                        .onChange(of: video.displayName) { _, _ in
+                            save()
+                        }
+
+                    if !video.fileName.isEmpty {
+                        Text(video.fileName)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .textSelection(.enabled)
+                    }
+                }
+
+                Spacer(minLength: 12)
+
+                Button(action: toggleWatched) {
+                    Label(video.watchStatusText, systemImage: video.watched ? "checkmark.circle.fill" : "circle")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(video.watched ? .green : .secondary)
+                }
+                .buttonStyle(.plain)
+            }
+
+            FlowMetadataRow(items: metadataItems)
+
+            TextField("筆記 / 學習重點", text: $video.note, axis: .vertical)
+                .textFieldStyle(.roundedBorder)
+                .lineLimit(2...4)
+                .onChange(of: video.note) { _, _ in
+                    save()
+                }
+        }
+        .padding(16)
+        .background(backgroundColor, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(borderColor)
+        )
     }
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) { // 增加垂直間距
-            // 1. 將註解欄位移到最上方，並使用較大的字體
-            HStack(alignment: .firstTextBaseline) {
-                TextField("輸入註解...", text: $video.note)
-                    .font(.headline) // 使用 headline 字體
-                    .textFieldStyle(.plain)
-                    .onChange(of: video.note) { _, _ in 
-                        Task {
-                            await saveAction()
-                        }
-                    }
+    private var metadataItems: [MetadataChipItem] {
+        var items = [MetadataChipItem(title: video.fileTypeLabel, systemImage: "film", tint: .indigo)]
 
-                Spacer()
-
-                // 播放按鈕保持在右上角
-                Button(action: {
-                    Task {
-                        // Use Task to handle the async action
-                        await playAction()
-                    }
-                }) {
-                    Image(systemName: "play.rectangle.fill")
-                        .font(.title2)
-                }
-                .buttonStyle(.plain)
-            }
-            // 2. 將顯示名稱移到下方，並使用較小的字體
-            HStack(alignment: .firstTextBaseline) {
-                TextField("顯示名稱", text: $video.displayName)
-                    .font(.body) // 使用 body 字體
-                    .textFieldStyle(.plain)
-                    .onChange(of: video.displayName) { _, _ in 
-                        Task {
-                            await saveAction()
-                        }
-                    }
-
-                // 日期跟隨顯示名稱
-                if !formattedDate.isEmpty {
-                    Text(formattedDate)
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                        .padding(.leading, 4)
-                }
-
-                Spacer()
-
-                // 已看/未看按鈕保持在右下角
-                Button(action: {
-                    Task {
-                        video.watched.toggle()
-                        await saveAction()
-                    }
-                }) {
-                    Image(systemName: video.watched ? "checkmark.circle.fill" : "circle")
-                        .font(.title3)
-                        .foregroundColor(video.watched ? .green : .secondary)
-                }
-                .buttonStyle(.plain)
-            }
+        if let formattedDateText = video.formattedDateText {
+            items.append(MetadataChipItem(title: formattedDateText, systemImage: "calendar", tint: .blue))
         }
-        .padding(10)
-        .background(isPlaying ? Color.accentColor.opacity(0.2) : Color.clear)
-        .cornerRadius(8)
-        .padding(.vertical, 2)
+
+        if let playbackPositionText = video.playbackPositionText {
+            items.append(MetadataChipItem(title: playbackPositionText, systemImage: "clock.arrow.circlepath", tint: .teal))
+        }
+
+        if let noteSummary = video.noteSummary {
+            items.append(MetadataChipItem(title: noteSummary, systemImage: "note.text", tint: .orange))
+        }
+
+        return items
+    }
+
+    private var backgroundColor: Color {
+        isPlaying ? Color.accentColor.opacity(0.12) : Color.secondary.opacity(0.05)
+    }
+
+    private var borderColor: Color {
+        (isPlaying ? Color.accentColor : Color.secondary).opacity(isPlaying ? 0.30 : 0.10)
+    }
+
+    private func play() {
+        Task {
+            await playAction()
+        }
+    }
+
+    private func toggleWatched() {
+        Task {
+            video.watched.toggle()
+            await saveAction()
+        }
+    }
+
+    private func save() {
+        Task {
+            await saveAction()
+        }
     }
 }

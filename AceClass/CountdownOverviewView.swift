@@ -4,69 +4,78 @@ struct CountdownOverviewView: View {
     @ObservedObject var appState: AppState
     @State private var selection: Filter = .all
     @State private var sort: Sort = .byDays
-    
+
     enum Filter: String, CaseIterable, Identifiable {
         case all = "全部"
         case upcoming = "即將到期"
         case overdue = "已過期"
+
         var id: String { rawValue }
     }
-    
+
     enum Sort: String, CaseIterable, Identifiable {
         case byDays = "依天數"
         case byName = "依名稱"
+
         var id: String { rawValue }
     }
-    
+
     var body: some View {
         NavigationView {
             VStack(spacing: 0) {
-                // Controls
                 HStack(spacing: 12) {
                     Picker("篩選", selection: $selection) {
-                        ForEach(Filter.allCases) { f in Text(f.rawValue).tag(f) }
+                        ForEach(Filter.allCases) { filter in
+                            Text(filter.rawValue).tag(filter)
+                        }
                     }
                     .pickerStyle(.segmented)
-                    
-<<<<<<< ours
+
                     Spacer()
-=======
-                    // 已過期的課程
-                    if !appState.overdueCourses.isEmpty {
-                        overdueCoursesSection
-                    }
-                    
-                    // 所有有設定目標日期的課程
-                    allCoursesWithTargetsSection
->>>>>>> theirs
-                    
+
                     Picker("排序", selection: $sort) {
-                        ForEach(Sort.allCases) { s in Text(s.rawValue).tag(s) }
+                        ForEach(Sort.allCases) { option in
+                            Text(option.rawValue).tag(option)
+                        }
                     }
                     .pickerStyle(.segmented)
                 }
                 .padding([.horizontal, .top])
                 .padding(.bottom, 8)
-                
+
                 ScrollView {
                     LazyVStack(spacing: 16) {
-                        if selection == .upcoming || selection == .all {
-                            if !appState.upcomingDeadlines.isEmpty {
-                                upcomingDeadlinesSection
-                            }
+                        if selection == .upcoming || selection == .all, !upcomingCourses.isEmpty {
+                            courseSection(
+                                title: "即將到期",
+                                subtitle: "\(upcomingCourses.count) 個課程",
+                                icon: "clock.fill",
+                                color: .orange,
+                                courses: upcomingCourses
+                            )
                         }
-                        
-                        if selection == .overdue || selection == .all {
-                            if !appState.overdueCoures.isEmpty {
-                                overdueCoursesSection
-                            }
+
+                        if selection == .overdue || selection == .all, !overdueCourses.isEmpty {
+                            courseSection(
+                                title: "已過期",
+                                subtitle: "\(overdueCourses.count) 個課程",
+                                icon: "exclamationmark.triangle.fill",
+                                color: .red,
+                                courses: overdueCourses
+                            )
                         }
-                        
-                        if selection == .all {
-                            allCoursesWithTargetsSection
+
+                        if selection == .all, !allCoursesWithTargets.isEmpty {
+                            courseSection(
+                                title: "所有目標",
+                                subtitle: "\(allCoursesWithTargets.count) 個課程",
+                                icon: "calendar",
+                                color: .blue,
+                                courses: allCoursesWithTargets
+                            )
                         }
-                        
-                        if filteredCoursesWithTargets.isEmpty {
+
+                        if filteredCourses.isEmpty {
                             emptyStateView
                         }
                     }
@@ -78,90 +87,69 @@ struct CountdownOverviewView: View {
         }
         .frame(minWidth: 700, minHeight: 600)
     }
-    
-    private var filteredCoursesWithTargets: [Course] {
-        let base = appState.courses.filter { $0.targetDate != nil }
-        let filtered: [Course]
-        switch selection {
-        case .all: filtered = base
-        case .upcoming: filtered = appState.upcomingDeadlines
-        case .overdue: filtered = appState.overdueCoures
-        }
-        return sortCourses(filtered)
+
+    private var upcomingCourses: [Course] {
+        sortCourses(appState.upcomingDeadlines)
     }
-    
+
+    private var overdueCourses: [Course] {
+        sortCourses(appState.overdueCourses)
+    }
+
+    private var allCoursesWithTargets: [Course] {
+        sortCourses(appState.coursesWithTargets)
+    }
+
+    private var filteredCourses: [Course] {
+        switch selection {
+        case .all:
+            return allCoursesWithTargets
+        case .upcoming:
+            return upcomingCourses
+        case .overdue:
+            return overdueCourses
+        }
+    }
+
     private func sortCourses(_ courses: [Course]) -> [Course] {
         switch sort {
         case .byDays:
-            return courses.sorted { (a, b) in (a.daysRemaining ?? Int.max) < (b.daysRemaining ?? Int.max) }
+            return courses.sorted { (a, b) in
+                (a.daysRemaining ?? Int.max) < (b.daysRemaining ?? Int.max)
+            }
         case .byName:
-            return courses.sorted { a, b in a.folderURL.lastPathComponent.localizedCaseInsensitiveCompare(b.folderURL.lastPathComponent) == .orderedAscending }
+            return courses.sorted { a, b in
+                a.folderURL.lastPathComponent.localizedCaseInsensitiveCompare(b.folderURL.lastPathComponent) == .orderedAscending
+            }
         }
     }
-    
-    private var upcomingDeadlinesSection: some View {
+
+    private func courseSection(
+        title: String,
+        subtitle: String,
+        icon: String,
+        color: Color,
+        courses: [Course]
+    ) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            SectionHeader(
-                title: "即將到期",
-                subtitle: "\(appState.upcomingDeadlines.count) 個課程",
-                icon: "clock.fill",
-                color: .orange
-            )
-            
-            ForEach(sortCourses(appState.upcomingDeadlines), id: \.id) { course in
+            SectionHeader(title: title, subtitle: subtitle, icon: icon, color: color)
+
+            ForEach(courses, id: \.id) { course in
                 CourseCountdownCard(course: course, appState: appState)
             }
         }
     }
-    
-    private var overdueCoursesSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SectionHeader(
-                title: "已過期",
-                subtitle: "\(appState.overdueCourses.count) 個課程",
-                icon: "exclamationmark.triangle.fill",
-                color: .red
-            )
-            
-<<<<<<< ours
-<<<<<<< ours
-            ForEach(sortCourses(appState.overdueCoures), id: \.id) { course in
-=======
-            ForEach(appState.overdueCourses, id: \.id) { course in
->>>>>>> theirs
-=======
-            ForEach(appState.overdueCourses, id: \.id) { course in
->>>>>>> theirs
-                CourseCountdownCard(course: course, appState: appState)
-            }
-        }
-    }
-    
-    private var allCoursesWithTargetsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SectionHeader(
-                title: "所有目標",
-                subtitle: "\(appState.courses.filter { $0.targetDate != nil }.count) 個課程",
-                icon: "calendar",
-                color: .blue
-            )
-            
-            ForEach(sortCourses(appState.courses.filter { $0.targetDate != nil }), id: \.id) { course in
-                CourseCountdownCard(course: course, appState: appState)
-            }
-        }
-    }
-    
+
     private var emptyStateView: some View {
         VStack(spacing: 16) {
             Image(systemName: "calendar.badge.plus")
                 .font(.system(size: 60))
                 .foregroundColor(.secondary)
-            
+
             Text("尚未設定任何倒數計日")
                 .font(.headline)
                 .foregroundColor(.secondary)
-            
+
             Text("前往課程頁面為課程設定目標日期，開始追蹤學習進度")
                 .font(.body)
                 .foregroundColor(.secondary)
@@ -177,13 +165,13 @@ struct SectionHeader: View {
     let subtitle: String
     let icon: String
     let color: Color
-    
+
     var body: some View {
         HStack {
             Image(systemName: icon)
                 .foregroundColor(color)
                 .font(.title2)
-            
+
             VStack(alignment: .leading) {
                 Text(title)
                     .font(.headline)
@@ -192,7 +180,7 @@ struct SectionHeader: View {
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
-            
+
             Spacer()
         }
         .padding(.bottom, 4)
@@ -203,7 +191,7 @@ struct CourseCountdownCard: View {
     let course: Course
     @ObservedObject var appState: AppState
     @State private var showingSettings = false
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -211,7 +199,7 @@ struct CourseCountdownCard: View {
                     Text(course.folderURL.lastPathComponent)
                         .font(.headline)
                         .lineLimit(1)
-                    
+
                     if !course.targetDescription.isEmpty {
                         Text(course.targetDescription)
                             .font(.subheadline)
@@ -219,9 +207,9 @@ struct CourseCountdownCard: View {
                             .lineLimit(2)
                     }
                 }
-                
+
                 Spacer()
-                
+
                 Button {
                     showingSettings = true
                 } label: {
@@ -230,15 +218,14 @@ struct CourseCountdownCard: View {
                 }
                 .buttonStyle(.plain)
             }
-            
+
             HStack {
                 CountdownDisplay(course: course)
                 Spacer()
-                
-                // 進度資訊
+
                 let watchedCount = course.videos.filter { $0.watched }.count
                 let totalCount = course.videos.count
-                
+
                 if totalCount > 0 {
                     HStack(spacing: 4) {
                         Image(systemName: "play.circle.fill")
@@ -250,8 +237,7 @@ struct CourseCountdownCard: View {
                     }
                 }
             }
-            
-            // 目標日期顯示
+
             if let targetDate = course.targetDate {
                 Text("目標日期：\(targetDate.formatted(date: .abbreviated, time: .omitted))")
                     .font(.caption2)

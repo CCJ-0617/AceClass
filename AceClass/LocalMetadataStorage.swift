@@ -1,128 +1,200 @@
+import CryptoKit
 import Foundation
-import SwiftUI
 
-/// This class provides a way to store metadata locally while still accessing content on external drives
-class LocalMetadataStorage {
-    // MARK: - Properties
-    
-    /// Controls whether the app should try to write metadata to external drives
-    /// If true, the app will attempt to write metadata files to both local storage and external drives
-    /// If false, metadata will only be stored locally
+/// Persists lightweight course metadata locally while allowing best-effort sync
+/// back to the selected course folder on external storage.
+final class LocalMetadataStorage {
+    // MARK: - Public Flags
+
     static var shouldAttemptWriteToExternalDrives: Bool = true
     static var disableExternalMetadataSync: Bool = false
-    private static var lastExternalCopyTime: Date = .distantPast
-    private static let externalCopyThrottle: TimeInterval = 30 // seconds between external copies per course
-    
-    /// Base directory for all AceClass metadata
+
+    struct CourseMetadata: Codable {
+        var targetDate: Date?
+        var targetDescription: String
+    }
+
+    // MARK: - Private State
+
+    private static let externalCopyThrottle: TimeInterval = 30
+    private static let coordinationQueue = DispatchQueue(label: "aceclass.metadata.coordination", qos: .utility)
+    private static var lastExternalCopyTimes: [String: Date] = [:]
+
+    // MARK: - Directories
+
     static let baseDirectory: URL = {
         let fileManager = FileManager.default
         let appSupportDir = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         let aceclassDir = appSupportDir.appendingPathComponent("AceClass", isDirectory: true)
-        
-        // Create directory if it doesn't exist
+
         if !fileManager.fileExists(atPath: aceclassDir.path) {
-            try? fileManager.createDirectory(at: aceclassDir, withIntermediateDirectories: true, attributes: nil)
+            try? fileManager.createDirectory(at: aceclassDir, withIntermediateDirectories: true)
         }
-        
+
         return aceclassDir
     }()
-    
-    /// Directory for course metadata
+
     static let coursesDirectory: URL = {
-        let coursesDir = baseDirectory.appendingPathComponent("Courses", isDirectory: true)
-        
-        // Create directory if it doesn't exist
-        if !FileManager.default.fileExists(atPath: coursesDir.path) {
-            try? FileManager.default.createDirectory(at: coursesDir, withIntermediateDirectories: true, attributes: nil)
+        let directory = baseDirectory.appendingPathComponent("Courses", isDirectory: true)
+        if !FileManager.default.fileExists(atPath: directory.path) {
+            try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         }
-        
-        return coursesDir
+        return directory
     }()
-    
-    // MARK: - Methods
-    
-    /// Get the local metadata file URL for a course
-    /// - Parameter courseID: The UUID of the course
-    /// - Returns: URL for the local metadata file
-    static func metadataURL(for courseID: UUID) -> URL {
-        return coursesDirectory.appendingPathComponent("\(courseID.uuidString).json")
+
+    static let courseMetadataDirectory: URL = {
+        let directory = baseDirectory.appendingPathComponent("CourseMetadata", isDirectory: true)
+        if !FileManager.default.fileExists(atPath: directory.path) {
+            try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        }
+        return directory
+    }()
+
+    // MARK: - Stable Keys
+
+    static func storageKey(for folderURL: URL) -> String {
+        let normalizedPath = normalizedPath(for: folderURL)
+        let digest = SHA256.hash(data: Data(normalizedPath.utf8))
+            .prefix(12)
+            .map { String(format: "%02x", $0) }
+            .joined()
+        let readableName = sanitizedPathComponent(folderURL.lastPathComponent)
+        return "\(readableName)_\(digest)"
     }
-    
-    /// Save video metadata for a course to local storage
-    /// - Parameters:
-    ///   - videos: Array of videos to save
-    ///   - courseID: The UUID of the course
-    static func saveVideos(_ videos: [VideoItem], for courseID: UUID) {
-        let fileURL = metadataURL(for: courseID)
-        
+
+    static func saveVideos(_ videos: [VideoItem], for storageKey: String) {
+        let fileURL = videoMetadataURL(for: storageKey)
+
         do {
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = .prettyPrinted
-            let data = try encoder.encode(videos)
+            let data = try makeVideoEncoder().encode(videos)
             try data.write(to: fileURL, options: .atomic)
             ACLog("成功將影片元數據儲存到本地: \(fileURL.path)", level: .info)
         } catch {
             ACLog("儲存影片元數據到本地失敗: \(error.localizedDescription)", level: .error)
         }
     }
-    
-    /// Load video metadata for a course from local storage or create new if not exists
-    /// - Parameters:
-    ///   - courseID: The UUID of the course
-    /// - Returns: Array of videos loaded from local storage or empty array
-    static func loadVideos(for courseID: UUID) -> [VideoItem] {
-        let fileURL = metadataURL(for: courseID)
-        
-        // If file exists, try to load it
-        if FileManager.default.fileExists(atPath: fileURL.path),
-           let data = try? Data(contentsOf: fileURL),
-           let videos = try? JSONDecoder().decode([VideoItem].self, from: data) {
-            return videos
+
+    static func loadVideos(for storageKey: String) -> [VideoItem] {
+        let fileURL = videoMetadataURL(for: storageKey)
+
+        guard FileManager.default.fileExists(atPath: fileURL.path),
+              let data = try? Data(contentsOf: fileURL),
+              let videos = try? JSONDecoder().decode([VideoItem].self, from: data) else {
+            return []
         }
-        
-        // Return empty array if no metadata exists
-        return []
+
+        return videos
     }
-    
-    /// Attempt to copy local metadata to the course folder on external drive (best effort)
-    /// - Parameters:
-    ///   - courseID: The UUID of the course
-    ///   - folderURL: The URL of the course folder on the external drive
-    static func tryCopyMetadataToExternalLocation(for courseID: UUID, folderURL: URL) {
-        // Only proceed if writing to external drives is enabled and not disabled globally
+
+    static func saveCourseMetadata(_ metadata: CourseMetadata, for storageKey: String) {
+        let fileURL = courseMetadataURL(for: storageKey)
+
+        do {
+            let data = try makeMetadataEncoder().encode(metadata)
+            try data.write(to: fileURL, options: .atomic)
+            ACLog("成功將課程元數據儲存到本地: \(fileURL.lastPathComponent)", level: .info)
+        } catch {
+            ACLog("儲存課程元數據到本地失敗: \(error.localizedDescription)", level: .error)
+        }
+    }
+
+    static func loadCourseMetadata(for storageKey: String) -> CourseMetadata? {
+        let fileURL = courseMetadataURL(for: storageKey)
+
+        guard FileManager.default.fileExists(atPath: fileURL.path),
+              let data = try? Data(contentsOf: fileURL) else {
+            return nil
+        }
+
+        do {
+            return try makeMetadataDecoder().decode(CourseMetadata.self, from: data)
+        } catch {
+            ACLog("讀取課程元數據失敗: \(error.localizedDescription)", level: .warn)
+            return nil
+        }
+    }
+
+    static func tryCopyMetadataToExternalLocation(for storageKey: String, folderURL: URL) {
         guard shouldAttemptWriteToExternalDrives, !disableExternalMetadataSync else {
-            ACLog("跳過複製到外部儲存裝置：功能關閉 (shouldAttemptWriteToExternalDrives=\(shouldAttemptWriteToExternalDrives) disableExternalMetadataSync=\(disableExternalMetadataSync))", level: .trace)
+            ACLog("跳過複製到外部儲存裝置：功能關閉", level: .trace)
             return
         }
-        // Throttle frequency
+
         let now = Date()
-        if now.timeIntervalSince(lastExternalCopyTime) < externalCopyThrottle {
+        guard shouldProceedWithExternalCopy(for: storageKey, now: now) else {
             ACLog("節流：距離上次外部複製不足 \(Int(externalCopyThrottle)) 秒，跳過", level: .trace)
             return
         }
-        
-        let localURL = metadataURL(for: courseID)
+
+        let localURL = videoMetadataURL(for: storageKey)
         let externalURL = folderURL.appendingPathComponent("videos.json")
-        
-        // Only attempt to copy if local file exists
-        guard FileManager.default.fileExists(atPath: localURL.path) else { 
+
+        guard FileManager.default.fileExists(atPath: localURL.path) else {
             ACLog("本地元數據檔案不存在，跳過複製", level: .warn)
-            return 
+            return
         }
-        
-        // Try to copy the file, using existing security scoped access
-        // The parent should have already granted access to the folder
+
         do {
-            // Remove existing file if it exists
             if FileManager.default.fileExists(atPath: externalURL.path) {
                 try FileManager.default.removeItem(at: externalURL)
             }
             try FileManager.default.copyItem(at: localURL, to: externalURL)
-            lastExternalCopyTime = Date()
+            markExternalCopy(for: storageKey, at: now)
             ACLog("成功複製元數據到外部位置: \(externalURL.path)", level: .info)
         } catch {
             ACLog("複製元數據到外部位置失敗 (非關鍵錯誤): \(error.localizedDescription)", level: .warn)
-            ACLog("這通常是因為權限問題或外部儲存裝置無法寫入", level: .trace)
+        }
+    }
+
+    // MARK: - Helpers
+
+    private static func normalizedPath(for folderURL: URL) -> String {
+        folderURL.standardizedFileURL.resolvingSymlinksInPath().path
+    }
+
+    private static func sanitizedPathComponent(_ value: String) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
+        let components = value.components(separatedBy: allowed.inverted).filter { !$0.isEmpty }
+        return components.isEmpty ? "course" : components.joined(separator: "-")
+    }
+
+    private static func videoMetadataURL(for storageKey: String) -> URL {
+        coursesDirectory.appendingPathComponent("\(storageKey).json")
+    }
+
+    private static func courseMetadataURL(for storageKey: String) -> URL {
+        courseMetadataDirectory.appendingPathComponent("\(storageKey).json")
+    }
+
+    private static func makeVideoEncoder() -> JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return encoder
+    }
+
+    private static func makeMetadataEncoder() -> JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        return encoder
+    }
+
+    private static func makeMetadataDecoder() -> JSONDecoder {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return decoder
+    }
+
+    private static func shouldProceedWithExternalCopy(for storageKey: String, now: Date) -> Bool {
+        coordinationQueue.sync {
+            guard let previous = lastExternalCopyTimes[storageKey] else { return true }
+            return now.timeIntervalSince(previous) >= externalCopyThrottle
+        }
+    }
+
+    private static func markExternalCopy(for storageKey: String, at date: Date) {
+        coordinationQueue.sync {
+            lastExternalCopyTimes[storageKey] = date
         }
     }
 }

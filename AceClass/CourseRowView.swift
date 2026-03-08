@@ -1,49 +1,74 @@
-
 import SwiftUI
 
-// 1. 簡化 CourseRowView，移除點擊事件處理，完全由 List 的 selection 控制
 struct CourseRowView: View {
     let course: Course
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 8) {
-                Image(systemName: "book")
-                    .foregroundColor(.accentColor)
-                Text(course.folderURL.lastPathComponent)
-                    .font(.body)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                Spacer()
-                // 右側 D-天數徽章
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 10) {
+                ZStack {
+                    Circle()
+                        .fill(accentColor.opacity(0.14))
+                        .frame(width: 34, height: 34)
+                    Image(systemName: course.unwatchedVideoCount == 0 && course.totalVideoCount > 0 ? "checkmark.seal.fill" : "book.closed")
+                        .foregroundStyle(accentColor)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(course.displayTitle)
+                        .font(.headline)
+                        .lineLimit(2)
+
+                    Text(course.learningStatusText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 8)
+
                 if let days = course.daysRemaining {
                     Text(days >= 0 ? "D-\(days)" : "D+\(abs(days))")
-                        .font(.caption2).bold()
-                        .padding(.vertical, 2)
-                        .padding(.horizontal, 6)
-                        .background(daysBadgeBackground)
-                        .foregroundColor(daysBadgeForeground)
-                        .clipShape(Capsule())
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(accentColor)
+                        .padding(.vertical, 5)
+                        .padding(.horizontal, 8)
+                        .background(accentColor.opacity(0.12), in: Capsule())
                 }
             }
-            
-            // 顯示倒數計日資訊
+
+            HStack(spacing: 8) {
+                MetadataChip(item: MetadataChipItem(title: "\(course.totalVideoCount) 部影片", systemImage: "film.stack", tint: .blue))
+                MetadataChip(item: MetadataChipItem(title: course.completionText, systemImage: "checkmark.circle", tint: .green))
+            }
+
+            if course.totalVideoCount > 0 {
+                ProgressView(value: course.completionRatio)
+                    .tint(accentColor)
+            }
+
             if course.targetDate != nil {
                 CountdownDisplay(course: course)
             }
         }
-        .padding(.vertical, 2)
+        .padding(14)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .strokeBorder(accentColor.opacity(0.18))
+        )
     }
-    
-    private var daysBadgeBackground: Color {
-        if course.isOverdue { return .red.opacity(0.15) }
-        if let d = course.daysRemaining, d <= 3 { return .orange.opacity(0.15) }
-        return .blue.opacity(0.15)
-    }
-    
-    private var daysBadgeForeground: Color {
-        if course.isOverdue { return .red }
-        if let d = course.daysRemaining, d <= 3 { return .orange }
-        return .blue
+
+    private var accentColor: Color {
+        if course.isOverdue {
+            return .red
+        }
+        if let daysRemaining = course.daysRemaining, daysRemaining <= 3 {
+            return .orange
+        }
+        if course.unwatchedVideoCount == 0 && course.totalVideoCount > 0 {
+            return .green
+        }
+        return .accentColor
     }
 }

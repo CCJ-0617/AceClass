@@ -1,0 +1,25 @@
+# macOS
+.DS_Store
+
+# Xcode user-specific state
+*.xcuserstate
+*.xccheckout
+*.xcscmblueprint
+**/xcuserdata/
+DerivedData/
+
+# Local secrets and signing artifacts
+.env
+.env.*
+*.p12
+*.mobileprovision
+*.cer
+*.key
+*.pem
+
+# Local tool history
+/.specstory/*
+!/.specstory/.gitignore
+
+# Logs and temporary outputs
+*.log

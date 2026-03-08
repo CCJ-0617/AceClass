@@ -11,14 +11,7 @@ import SwiftUI
 struct UnwatchedVideoRowView: View {
     let video: VideoItem
     let playAction: () async -> Void
-    
-    private var formattedDate: String {
-        guard let date = video.date else { return "" }
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.string(from: date)
-    }
-    
+
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
             Image(systemName: "play.circle.fill")
@@ -26,11 +19,11 @@ struct UnwatchedVideoRowView: View {
                 .foregroundColor(.blue)
             
             VStack(alignment: .leading, spacing: 4) {
-                Text(video.displayName.isEmpty ? video.fileName : video.displayName)
+                Text(video.resolvedTitle)
                     .lineLimit(1)
                     .font(.headline)
                 
-                Text(video.note.isEmpty ? "無註解" : video.note)
+                Text(video.noteSummary ?? "尚未補充筆記")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
                     .lineLimit(1)
@@ -38,8 +31,8 @@ struct UnwatchedVideoRowView: View {
             
             Spacer()
             
-            if !formattedDate.isEmpty {
-                Text(formattedDate)
+            if let formattedDateText = video.formattedDateText {
+                Text(formattedDateText)
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
