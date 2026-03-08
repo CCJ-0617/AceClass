@@ -343,7 +343,7 @@ struct SidebarHeroCard: View {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(L10n.tr("app.title"))
-                        .font(.system(size: 28, weight: .bold, design: .rounded))
+                        .font(.system(size: 28, weight: .bold))
                     Text(L10n.tr("app.subtitle"))
                         .font(.subheadline)
                         .foregroundStyle(.secondary)

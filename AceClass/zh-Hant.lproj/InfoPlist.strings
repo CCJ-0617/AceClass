@@ -1,0 +1,6 @@
+/* Info.plist localized strings – Traditional Chinese */
+"CFBundleDisplayName" = "AceClass";
+"CFBundleName" = "AceClass";
+"CFBundleSpokenName" = "Ace Class";
+"NSHumanReadableCopyright" = "Copyright © 2026 AceClass. 保留一切權利。";
+"NSSpeechRecognitionUsageDescription" = "需要使用語音辨識以自動產生影片字幕。";

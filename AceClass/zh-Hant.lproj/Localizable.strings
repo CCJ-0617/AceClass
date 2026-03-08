@@ -157,6 +157,24 @@
 "toolbar.countdown_center" = "倒數中心";
 "toolbar.debug_console" = "偵錯主控台";
 
+"transcription.error.audio_export_failed" = "音訊匯出失敗";
+"transcription.error.audio_too_short" = "音訊檔案太短或無有效內容 (<4KB)";
+"transcription.error.audio_writer_init" = "無法建立音訊寫入器";
+"transcription.error.m4a_export_failed" = "m4a 匯出失敗";
+"transcription.error.m4a_export_init" = "無法建立 m4a 匯出會話";
+"transcription.error.no_audio_track" = "影片沒有可用音訊軌";
+"transcription.error.no_offline_model" = "此語系未安裝離線模型且未允許雲端辨識";
+"transcription.error.no_offline_locale" = "無可用離線語系，且未啟用雲端 fallback";
+"transcription.error.no_supported_locale" = "無可用支援語系";
+"transcription.error.reader_output_add" = "無法添加讀取輸出";
+"transcription.error.recognition_timeout" = "辨識逾時 stage=%@";
+"transcription.error.segment_export_failed" = "分段匯出失敗";
+"transcription.error.segment_export_init" = "無法建立分段匯出會話";
+"transcription.error.trim_failed" = "裁剪失敗";
+"transcription.error.trim_init" = "無法建立裁剪工作";
+"transcription.error.unsupported_locale" = "不支援的語系";
+"transcription.error.writer_input_add" = "無法添加寫入輸入";
+
 "video.resume_from" = "續播 %@";
 "video.status.unwatched" = "未觀看";
 "video.status.watched" = "已觀看";

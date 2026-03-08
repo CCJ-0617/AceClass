@@ -157,6 +157,24 @@
 "toolbar.countdown_center" = "Countdown Center";
 "toolbar.debug_console" = "Debug Console";
 
+"transcription.error.audio_export_failed" = "Audio export failed";
+"transcription.error.audio_too_short" = "Audio file is too short or has no valid content (<4KB)";
+"transcription.error.audio_writer_init" = "Unable to create audio writer";
+"transcription.error.m4a_export_failed" = "M4A export failed";
+"transcription.error.m4a_export_init" = "Unable to create M4A export session";
+"transcription.error.no_audio_track" = "No usable audio track in video";
+"transcription.error.no_offline_model" = "No offline model installed for this locale and cloud recognition is not enabled";
+"transcription.error.no_offline_locale" = "No offline locale available and cloud fallback is not enabled";
+"transcription.error.no_supported_locale" = "No supported locale available";
+"transcription.error.reader_output_add" = "Unable to add reader output";
+"transcription.error.recognition_timeout" = "Recognition timed out at stage=%@";
+"transcription.error.segment_export_failed" = "Segment export failed";
+"transcription.error.segment_export_init" = "Unable to create segment export session";
+"transcription.error.trim_failed" = "Trim failed";
+"transcription.error.trim_init" = "Unable to create trim session";
+"transcription.error.unsupported_locale" = "Unsupported locale";
+"transcription.error.writer_input_add" = "Unable to add writer input";
+
 "video.resume_from" = "Resume at %@";
 "video.status.unwatched" = "Unwatched";
 "video.status.watched" = "Watched";

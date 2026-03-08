@@ -12,7 +12,7 @@ struct CountdownDisplay: View {
                         Text(days >= 0 ? "D-" : "D+")
                             .font(.caption2.weight(.semibold))
                         Text("\(abs(days))")
-                            .font(.system(size: 12, weight: .bold, design: .rounded))
+                            .font(.system(size: 12, weight: .bold))
                             .monospacedDigit()
                     }
                     .padding(.vertical, 3)

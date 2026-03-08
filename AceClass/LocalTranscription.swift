@@ -87,7 +87,7 @@ final class LocalTranscriptionService {
             let requested = locales.isEmpty ? [Locale.current.identifier] : locales
             let chosenLocales = allowCloudFallback ? supportedLocales(from: requested) : onDeviceCapableLocales(from: requested)
             guard !chosenLocales.isEmpty else {
-                throw NSError(domain: "LocalTranscription", code: -3, userInfo: [NSLocalizedDescriptionKey: allowCloudFallback ? "無可用支援語系" : "無可用離線語系，且未啟用雲端 fallback"]) }
+                throw NSError(domain: "LocalTranscription", code: -3, userInfo: [NSLocalizedDescriptionKey: allowCloudFallback ? L10n.tr("transcription.error.no_supported_locale") : L10n.tr("transcription.error.no_offline_locale")]) }
             ACLog("SPEECH Requested locales=\(requested) -> using=\(chosenLocales) allowCloud=\(allowCloudFallback) sequential=true", level: .debug)
             var preparedOpt: AudioAnalysis? = nil
             do {
@@ -265,7 +265,7 @@ final class LocalTranscriptionService {
             let baseDuration = min(segmentLength, total - start)
             let extra = (start + baseDuration < total) ? overlap : 0
             let timeRange = CMTimeRange(start: CMTime(seconds: start, preferredTimescale: durationCM.timescale), duration: CMTime(seconds: baseDuration + extra, preferredTimescale: durationCM.timescale))
-            guard let export = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetAppleM4A) else { throw NSError(domain: "LocalTranscription", code: -50, userInfo: [NSLocalizedDescriptionKey: "無法建立分段匯出會話"]) }
+            guard let export = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetAppleM4A) else { throw NSError(domain: "LocalTranscription", code: -50, userInfo: [NSLocalizedDescriptionKey: L10n.tr("transcription.error.segment_export_init")]) }
             let outURL = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString + String(format: "_%.0fs.m4a", start))
             try? FileManager.default.removeItem(at: outURL)
             export.timeRange = timeRange
@@ -280,7 +280,7 @@ final class LocalTranscriptionService {
                     box.e.exportAsynchronously {
                         switch box.e.status {
                         case .completed: cont.resume()
-                        case .failed, .cancelled: cont.resume(throwing: box.e.error ?? NSError(domain: "LocalTranscription", code: -51, userInfo: [NSLocalizedDescriptionKey: "分段匯出失敗"]))
+                        case .failed, .cancelled: cont.resume(throwing: box.e.error ?? NSError(domain: "LocalTranscription", code: -51, userInfo: [NSLocalizedDescriptionKey: L10n.tr("transcription.error.segment_export_failed")]))
                         default: break
                         }
                     }
@@ -312,10 +312,10 @@ final class LocalTranscriptionService {
         if ["wav","caf","aif","aiff"].contains(url.pathExtension.lowercased()) { return url }
         let asset = AVURLAsset(url: url)
         let tracks = try await asset.loadTracks(withMediaType: .audio)
-        guard let firstTrack = tracks.first else { throw NSError(domain: "LocalTranscription", code: -10, userInfo: [NSLocalizedDescriptionKey: "影片沒有可用音訊軌"]) }
+        guard let firstTrack = tracks.first else { throw NSError(domain: "LocalTranscription", code: -10, userInfo: [NSLocalizedDescriptionKey: L10n.tr("transcription.error.no_audio_track")]) }
         let outURL = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString + ".caf")
         try? FileManager.default.removeItem(at: outURL)
-        guard let writer = try? AVAssetWriter(outputURL: outURL, fileType: .caf) else { throw NSError(domain: "LocalTranscription", code: -11, userInfo: [NSLocalizedDescriptionKey: "無法建立音訊寫入器"]) }
+        guard let writer = try? AVAssetWriter(outputURL: outURL, fileType: .caf) else { throw NSError(domain: "LocalTranscription", code: -11, userInfo: [NSLocalizedDescriptionKey: L10n.tr("transcription.error.audio_writer_init")]) }
         let pcmSettings: [String: Any] = [
             AVFormatIDKey: kAudioFormatLinearPCM,
             AVLinearPCMIsBigEndianKey: false,
@@ -329,7 +329,7 @@ final class LocalTranscriptionService {
         let sourceFormat = fds.first // Direct optional; avoid redundant cast warning
         let input = AVAssetWriterInput(mediaType: .audio, outputSettings: pcmSettings, sourceFormatHint: sourceFormat)
         input.expectsMediaDataInRealTime = false
-        guard writer.canAdd(input) else { throw NSError(domain: "LocalTranscription", code: -12, userInfo: [NSLocalizedDescriptionKey: "無法添加寫入輸入"]) }
+        guard writer.canAdd(input) else { throw NSError(domain: "LocalTranscription", code: -12, userInfo: [NSLocalizedDescriptionKey: L10n.tr("transcription.error.writer_input_add")]) }
         writer.add(input)
         let reader = try AVAssetReader(asset: asset)
         let readerOutputSettings: [String: Any] = [
@@ -342,7 +342,7 @@ final class LocalTranscriptionService {
             AVSampleRateKey: 16000
         ]
         let output = AVAssetReaderTrackOutput(track: firstTrack, outputSettings: readerOutputSettings)
-        guard reader.canAdd(output) else { throw NSError(domain: "LocalTranscription", code: -13, userInfo: [NSLocalizedDescriptionKey: "無法添加讀取輸出"]) }
+        guard reader.canAdd(output) else { throw NSError(domain: "LocalTranscription", code: -13, userInfo: [NSLocalizedDescriptionKey: L10n.tr("transcription.error.reader_output_add")]) }
         reader.add(output)
         writer.startWriting(); reader.startReading(); writer.startSession(atSourceTime: .zero)
         return try await withCheckedThrowingContinuation { cont in
@@ -365,7 +365,7 @@ final class LocalTranscriptionService {
                 if reader.status == .completed {
                     writer.finishWriting { cont.resume(returning: outURL) }
                 } else if reader.status == .failed || reader.status == .cancelled {
-                    let err = reader.error ?? writer.error ?? NSError(domain: "LocalTranscription", code: -14, userInfo: [NSLocalizedDescriptionKey: "音訊匯出失敗"])
+                    let err = reader.error ?? writer.error ?? NSError(domain: "LocalTranscription", code: -14, userInfo: [NSLocalizedDescriptionKey: L10n.tr("transcription.error.audio_export_failed")])
                     writer.cancelWriting()
                     cont.resume(throwing: err)
                 }
@@ -378,7 +378,7 @@ final class LocalTranscriptionService {
         let durationCM = try await asset.load(.duration)
         let newURL = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString + "_trim.caf")
         try? FileManager.default.removeItem(at: newURL)
-        guard let export = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetPassthrough) else { throw NSError(domain: "LocalTranscription", code: -20, userInfo: [NSLocalizedDescriptionKey: "無法建立裁剪工作"]) }
+        guard let export = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetPassthrough) else { throw NSError(domain: "LocalTranscription", code: -20, userInfo: [NSLocalizedDescriptionKey: L10n.tr("transcription.error.trim_init")]) }
         let startTime = CMTime(seconds: max(0, start), preferredTimescale: durationCM.timescale)
         export.timeRange = CMTimeRange(start: startTime, duration: CMTimeSubtract(durationCM, startTime))
         if #available(macOS 15.0, iOS 18.0, *) {
@@ -395,7 +395,7 @@ final class LocalTranscriptionService {
                     switch box.s.status {
                     case .completed: cont.resume(returning: newURL)
                     case .failed, .cancelled:
-                        cont.resume(throwing: box.s.error ?? NSError(domain: "LocalTranscription", code: -21, userInfo: [NSLocalizedDescriptionKey: "裁剪失敗"]))
+                        cont.resume(throwing: box.s.error ?? NSError(domain: "LocalTranscription", code: -21, userInfo: [NSLocalizedDescriptionKey: L10n.tr("transcription.error.trim_failed")]))
                     default: break
                     }
                 }
@@ -459,7 +459,7 @@ final class LocalTranscriptionService {
     private func exportToM4A(_ url: URL) async throws -> URL {
         let asset = AVURLAsset(url: url)
         guard let export = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetAppleM4A) else {
-            throw NSError(domain: "LocalTranscription", code: -40, userInfo: [NSLocalizedDescriptionKey: "無法建立 m4a 匯出會話"]) }
+            throw NSError(domain: "LocalTranscription", code: -40, userInfo: [NSLocalizedDescriptionKey: L10n.tr("transcription.error.m4a_export_init")]) }
         let outURL = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString + ".m4a")
         try? FileManager.default.removeItem(at: outURL)
         export.outputURL = outURL
@@ -475,7 +475,7 @@ final class LocalTranscriptionService {
                     switch box.e.status {
                     case .completed: cont.resume(returning: outURL)
                     case .failed, .cancelled:
-                        cont.resume(throwing: box.e.error ?? NSError(domain: "LocalTranscription", code: -41, userInfo: [NSLocalizedDescriptionKey: "m4a 匯出失敗"]))
+                        cont.resume(throwing: box.e.error ?? NSError(domain: "LocalTranscription", code: -41, userInfo: [NSLocalizedDescriptionKey: L10n.tr("transcription.error.m4a_export_failed")]))
                     default: break
                     }
                 }
@@ -590,7 +590,7 @@ final class LocalTranscriptionService {
             }
             group.addTask { [recognitionTimeout] in
                 try await Task.sleep(nanoseconds: recognitionTimeout)
-                throw NSError(domain: "LocalTranscription", code: -60, userInfo: [NSLocalizedDescriptionKey: "辨識逾時 stage=\(stage)"])
+                throw NSError(domain: "LocalTranscription", code: -60, userInfo: [NSLocalizedDescriptionKey: L10n.tr("transcription.error.recognition_timeout", stage)])
             }
             let result = try await group.next()!
             group.cancelAll()
@@ -629,15 +629,15 @@ final class LocalTranscriptionService {
     private func runRecognizer(url: URL, localeIdentifier: String) async throws -> [CaptionSegment] {
         if let attrs = try? FileManager.default.attributesOfItem(atPath: url.path), let sz = attrs[.size] as? NSNumber, sz.intValue < 4000 {
             debugAudioFile(url, label: "runRecognizer.tooSmall locale=\(localeIdentifier)")
-            throw NSError(domain: "LocalTranscription", code: -30, userInfo: [NSLocalizedDescriptionKey: "音訊檔案太短或無有效內容 (<4KB)"])
+            throw NSError(domain: "LocalTranscription", code: -30, userInfo: [NSLocalizedDescriptionKey: L10n.tr("transcription.error.audio_too_short")])
         }
         debugAudioFile(url, label: "runRecognizer.begin locale=\(localeIdentifier)")
         if Task.isCancelled { return [] }
         guard let recognizer = SFSpeechRecognizer(locale: Locale(identifier: localeIdentifier)) else {
-            throw NSError(domain: "LocalTranscription", code: -1, userInfo: [NSLocalizedDescriptionKey: "不支援的語系"]) }
+            throw NSError(domain: "LocalTranscription", code: -1, userInfo: [NSLocalizedDescriptionKey: L10n.tr("transcription.error.unsupported_locale")]) }
         let hasOnDevice: Bool = { if #available(macOS 12.0, iOS 13.0, *) { return recognizer.supportsOnDeviceRecognition } else { return false } }()
         if !hasOnDevice && !allowCloudFallback {
-            throw NSError(domain: "LocalTranscription", code: -2, userInfo: [NSLocalizedDescriptionKey: "此語系未安裝離線模型且未允許雲端辨識"]) }
+            throw NSError(domain: "LocalTranscription", code: -2, userInfo: [NSLocalizedDescriptionKey: L10n.tr("transcription.error.no_offline_model")]) }
         let request = SFSpeechURLRecognitionRequest(url: url)
         if #available(macOS 12.0, iOS 13.0, *) { request.requiresOnDeviceRecognition = hasOnDevice && !allowCloudFallback }
         request.shouldReportPartialResults = false

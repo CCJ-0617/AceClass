@@ -185,7 +185,7 @@ struct VideoPlayerView: View {
 
                 VStack(spacing: 10) {
                     Text(placeholderTitle)
-                        .font(.system(size: 26, weight: .bold, design: .rounded))
+                        .font(.system(size: 26, weight: .bold))
                         .foregroundStyle(.white)
 
                     Text(placeholderSubtitle)
@@ -230,6 +230,7 @@ struct VideoPlayerView: View {
                     } else {
                         ProgressView()
                             .progressViewStyle(.circular)
+                            .controlSize(.small)
                             .tint(.white)
                             .scaleEffect(0.92)
                     }
@@ -373,7 +374,7 @@ struct CaptionOverlayView: View {
             Spacer()
             if !currentText.isEmpty {
                 Text(currentText)
-                    .font(.system(size: 16, weight: .semibold, design: .rounded))
+                    .font(.system(size: 16, weight: .semibold))
                     .foregroundColor(.white)
                     .shadow(color: .black.opacity(0.8), radius: 6, x: 0, y: 2)
                     .padding(.horizontal, 16)

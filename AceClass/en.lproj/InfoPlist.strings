@@ -1,0 +1,6 @@
+/* Info.plist localized strings – English */
+"CFBundleDisplayName" = "AceClass";
+"CFBundleName" = "AceClass";
+"CFBundleSpokenName" = "Ace Class";
+"NSHumanReadableCopyright" = "Copyright © 2026 AceClass. All rights reserved.";
+"NSSpeechRecognitionUsageDescription" = "Speech recognition is required to automatically generate video captions.";

@@ -113,7 +113,7 @@ struct CourseStatisticsView: View {
     private var headerCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(course.displayTitle)
-                .font(.system(size: 32, weight: .bold, design: .rounded))
+                .font(.system(size: 32, weight: .bold))
 
             Text(L10n.tr("course.statistics_intro"))
                 .font(.subheadline)
