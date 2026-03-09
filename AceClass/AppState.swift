@@ -60,11 +60,14 @@ class AppState: ObservableObject {
     @Published var enableVideoCaching: Bool = true // 小於閾值影片先複製到本地快取
     @Published var playerLoadingTitle: String? = nil
     @Published var playerLoadingDetail: String? = nil
+    @Published var isLoadingCourses: Bool = false
+    @Published var coursesLoadingProgress: String? = nil
 
     // MARK: - Private Properties
     private let bookmarkKey = "selectedFolderBookmark"
     private var securityScopedURL: URL? // 持有主資料夾的安全作用域存取權
     private var currentlyAccessedVideoURL: URL? // 持有當前播放影片的獨立安全作用域存取權
+    private var activeCacheOriginalPath: String? // 正在播放的影片原始路徑，用於快取保護
     private var timeObserverToken: Any? // NEW periodic time observer token
     private let playbackProgressAutoMarkThreshold: Double = 0.75 // 75%
     private let playbackPeriodicUpdateInterval: CMTime = CMTime(seconds: 5, preferredTimescale: 600) // every ~5s
@@ -76,9 +79,12 @@ class AppState: ObservableObject {
     private let videoSelectionDebounceIntervalWhileInitializing: TimeInterval = 0.3
     // Observer for player item failure notifications
     private var playerItemFailedObserver: NSObjectProtocol? = nil
+    private var playerItemStatusObserver: NSKeyValueObservation? = nil
+    private var playerItemErrorLogObserver: NSObjectProtocol? = nil
     // Diagnostics
     private struct PlayerDiagnostics { var selectionRequests=0; var executedSelections=0; var playerInitSuccess=0; var playerInitFailure=0; var benignCancellations=0; var lastInitDuration: TimeInterval=0; var avgInitDuration: TimeInterval=0 }
     private var diagnostics = PlayerDiagnostics()
+    private var loadCoursesTask: Task<Void, Never>? = nil
     private var currentInitStart: Date? = nil
     nonisolated static let supportedVideoExtensions: [String] = [
         "mp4", "mov", "m4v", "mkv",
@@ -134,6 +140,7 @@ class AppState: ObservableObject {
     deinit {
         // App 結束時，清理所有安全作用域存取權
     if let obs = playerItemFailedObserver { NotificationCenter.default.removeObserver(obs) }
+    playerItemStatusObserver?.invalidate()
         if let url = currentlyAccessedVideoURL {
             url.stopAccessingSecurityScopedResource()
             currentlyAccessedVideoURL = nil
@@ -347,12 +354,19 @@ class AppState: ObservableObject {
         }
     // Remove failure observer from previous item if any
     if let obs = playerItemFailedObserver { NotificationCenter.default.removeObserver(obs); playerItemFailedObserver = nil }
+    playerItemStatusObserver?.invalidate(); playerItemStatusObserver = nil
+    if let obs = playerItemErrorLogObserver { NotificationCenter.default.removeObserver(obs); playerItemErrorLogObserver = nil }
         
         // 1. Stop accessing the previous video's resources.
             if let previousURL = currentlyAccessedVideoURL {
                 previousURL.stopAccessingSecurityScopedResource()
                 currentlyAccessedVideoURL = nil
                 ACLog("Stopped accessing previous video resource: \(previousURL.path)", level: .trace)
+            }
+            // Release cache protection for the previous video
+            if let prevCachePath = activeCacheOriginalPath {
+                VideoCacheManager.shared.markInactive(originalPath: prevCachePath)
+                activeCacheOriginalPath = nil
             }
 
             // 2. If the video is deselected, clear the player and state.
@@ -394,10 +408,14 @@ class AppState: ObservableObject {
                 if enableVideoCaching {
                     self.playerLoadingTitle = L10n.tr("player.loading.preparing_file")
                     self.playerLoadingDetail = L10n.tr("player.loading.checking_cache")
+                    let originalPath = fileURL.path
                     do {
                         let cached = try await VideoCacheManager.shared.preparePlaybackURL(for: fileURL)
                         if cached != fileURL {
                             ACLog("Using cached local copy for playback: \(cached.lastPathComponent)", level: .info)
+                            // Mark this file as actively playing so cache won't evict it
+                            VideoCacheManager.shared.markActive(originalPath: originalPath)
+                            activeCacheOriginalPath = originalPath
                             fileURL = cached
                             self.playerLoadingDetail = L10n.tr("player.loading.using_cached_copy")
                         } else {
@@ -445,6 +463,28 @@ class AppState: ObservableObject {
                                 self.finalizeInitDiagnostics(success: false)
                             }
                         }
+                    }
+
+                    // KVO observer for item status — catches -12860 and similar parse/access errors
+                    playerItemStatusObserver = item.observe(\.status, options: [.new]) { [weak self, weak item] _, _ in
+                        guard let item = item, item.status == .failed else { return }
+                        Task { @MainActor [weak self] in
+                            guard let self else { return }
+                            let err = item.error
+                            let desc = err?.localizedDescription ?? "Unknown error"
+                            let code = (err as? NSError)?.code ?? 0
+                            ACLog("AVPlayerItem status failed: code=\(code) desc=\(desc)", level: .error)
+                            self.player?.pause()
+                            self.playerLoadingTitle = L10n.tr("player.loading.failed")
+                            self.playerLoadingDetail = desc
+                            self.isInitializingPlayer = true // Show error overlay
+                        }
+                    }
+
+                    // Error log observer — logs non-fatal AVPlayer errors (e.g. intermittent read failures)
+                    playerItemErrorLogObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemNewErrorLogEntry, object: item, queue: .main) { [weak item] _ in
+                        guard let item = item, let log = item.errorLog(), let last = log.events.last else { return }
+                        ACLog("AVPlayer error log: code=\(last.errorStatusCode) domain=\(last.errorDomain) comment=\(last.errorComment ?? "-")", level: .warn)
                     }
                 }
                 // Setup resume logic after player item is ready
@@ -774,8 +814,16 @@ class AppState: ObservableObject {
     @MainActor
     func loadCourses(from sourceURL: URL) async {
         print("📚 [DEBUG] loadCourses called for: \(sourceURL.path)")
+
+        // Cancel any previous in-flight load
+        loadCoursesTask?.cancel()
+        loadCoursesTask = nil
+
+        isLoadingCourses = true
+        coursesLoadingProgress = L10n.tr("loading.scanning_folders")
+
         do {
-            // First load the courses on a background thread
+            // ── Phase 1: Discover course folders (fast, no video enumeration) ──
             let loadResult = try await Task.detached { () -> (courseFolders: [URL], rootVideoFiles: [URL], debugListing: [String]) in
                 let genericUnitFolderNames: Set<String> = ["單元_未分類", "未分類"]
 
@@ -871,9 +919,7 @@ class AppState: ObservableObject {
             let rootVideoFiles = loadResult.rootVideoFiles
             
             print("📚 [DEBUG] Found \(courseFolders.count) course folders; root has \(rootVideoFiles.count) supported video files")
-            print("📚 [DEBUG] Applying loadCourses result on @MainActor")
 
-            var coursesWithMetadata: [Course] = []
             let existingCoursesByPath = Dictionary(uniqueKeysWithValues: self.courses.map {
                 (self.normalizedCoursePath($0.folderURL), $0)
             })
@@ -881,82 +927,110 @@ class AppState: ObservableObject {
             let includeRootAsCourse = !rootVideoFiles.isEmpty
             let candidateFolders = (includeRootAsCourse ? [sourceURL] : []) + courseFolders
 
-            let candidateFolderPaths = Set(candidateFolders.map { self.normalizedCoursePath($0) })
-
-            if !candidateFolders.isEmpty {
-                for folderURL in candidateFolders {
-                    let folderPath = self.normalizedCoursePath(folderURL)
-                    let (targetDate, targetDescription) = await self.loadCourseMetadata(for: folderURL)
-                    let recursiveScan = self.shouldScanCourseRecursively(
-                        folderURL: folderURL,
-                        knownCourseFolderPaths: candidateFolderPaths
-                    )
-                    let videos: [VideoItem]
-                    do {
-                        videos = try await self.loadVideoSnapshot(for: folderURL, recursive: recursiveScan)
-                    } catch {
-                        print("📚 [DEBUG] Failed to preload videos for \(folderURL.lastPathComponent): \(error.localizedDescription)")
-                        videos = existingCoursesByPath[folderPath]?.videos ?? []
-                    }
-
-                    let existingCourse = existingCoursesByPath[folderPath]
-                    let courseWithMetadata = Course(
-                        id: existingCourse?.id ?? UUID(),
-                        folderURL: folderURL,
-                        videos: videos,
-                        targetDate: targetDate,
-                        targetDescription: targetDescription
-                    )
-                    coursesWithMetadata.append(courseWithMetadata)
-                }
-            } else {
+            if candidateFolders.isEmpty {
                 print("📚 [DEBUG] No supported video files found under the selected folder tree")
                 if !loadResult.debugListing.isEmpty {
                     print("📚 [DEBUG] Directory listing (up to 20):\n" + loadResult.debugListing.joined(separator: "\n"))
                 }
-            }
-
-            if coursesWithMetadata.isEmpty, !rootVideoFiles.isEmpty {
-                let folderURL = sourceURL
-                let folderPath = self.normalizedCoursePath(folderURL)
-                if let existingCourse = existingCoursesByPath[folderPath] {
-                    coursesWithMetadata.append(existingCourse)
-                } else {
-                    let (targetDate, targetDescription) = await self.loadCourseMetadata(for: folderURL)
-                    let recursiveScan = self.shouldScanCourseRecursively(
-                        folderURL: folderURL,
-                        knownCourseFolderPaths: candidateFolderPaths
-                    )
-                    let videos = (try? await self.loadVideoSnapshot(for: folderURL, recursive: recursiveScan)) ?? []
-                    let courseWithMetadata = Course(
-                        id: UUID(),
-                        folderURL: folderURL,
-                        videos: videos,
+                // Check fallback: root has videos but discoverCourseFolders missed it
+                if !rootVideoFiles.isEmpty {
+                    let folderPath = self.normalizedCoursePath(sourceURL)
+                    let existingCourse = existingCoursesByPath[folderPath]
+                    let (targetDate, targetDescription) = await self.loadCourseMetadata(for: sourceURL)
+                    let placeholder = Course(
+                        id: existingCourse?.id ?? UUID(),
+                        folderURL: sourceURL,
+                        videos: existingCourse?.videos ?? [],
                         targetDate: targetDate,
                         targetDescription: targetDescription
                     )
-                    coursesWithMetadata.append(courseWithMetadata)
+                    self.courses = [placeholder]
+                } else {
+                    self.courses = []
                 }
+                self.isLoadingCourses = false
+                self.coursesLoadingProgress = nil
+                return
             }
 
-            self.courses = coursesWithMetadata
-            print("載入了 \(self.courses.count) 個課程。")
+            // ── Show courses immediately with previously-cached videos (no blocking scan) ──
+            let candidateFolderPaths = Set(candidateFolders.map { self.normalizedCoursePath($0) })
+            var placeholderCourses: [Course] = []
+            for folderURL in candidateFolders {
+                let folderPath = self.normalizedCoursePath(folderURL)
+                let existingCourse = existingCoursesByPath[folderPath]
+                let (targetDate, targetDescription) = await self.loadCourseMetadata(for: folderURL)
+                placeholderCourses.append(Course(
+                    id: existingCourse?.id ?? UUID(),
+                    folderURL: folderURL,
+                    videos: existingCourse?.videos ?? [],
+                    targetDate: targetDate,
+                    targetDescription: targetDescription
+                ))
+            }
+            self.courses = placeholderCourses
+            print("📚 [DEBUG] Phase 1 done: showing \(placeholderCourses.count) courses (videos pending)")
+
+            // Auto-select first course immediately so the UI is interactive
+            if self.selectedCourseID == nil, let firstCourse = self.courses.first {
+                self.selectCourse(firstCourse.id)
+            }
+
+            // ── Phase 2: Load videos for each course incrementally ──
+            let totalCourses = self.courses.count
+            let courseSnapshots: [(id: UUID, folderURL: URL, index: Int)] = self.courses.enumerated().map { (i, c) in (c.id, c.folderURL, i) }
+
+            // Start the incremental load as a cancellable task
+            let incrementalTask = Task { @MainActor [weak self] in
+                guard let self else { return }
+                for (offset, snapshot) in courseSnapshots.enumerated() {
+                    try Task.checkCancellation()
+                    self.coursesLoadingProgress = L10n.tr("loading.courses_progress", offset + 1, totalCourses)
+                    let recursiveScan = self.shouldScanCourseRecursively(
+                        folderURL: snapshot.folderURL,
+                        knownCourseFolderPaths: candidateFolderPaths
+                    )
+                    let videos: [VideoItem]
+                    do {
+                        videos = try await self.loadVideoSnapshot(for: snapshot.folderURL, recursive: recursiveScan)
+                    } catch {
+                        print("📚 [DEBUG] Failed to load videos for \(snapshot.folderURL.lastPathComponent): \(error.localizedDescription)")
+                        continue
+                    }
+                    try Task.checkCancellation()
+                    // Update the matching course (it may have shifted index)
+                    if let idx = self.courseIndex(for: snapshot.id) {
+                        self.courses[idx].videos = videos
+                    }
+                }
+                self.isLoadingCourses = false
+                self.coursesLoadingProgress = nil
+                print("📚 [DEBUG] Phase 2 done: all course videos loaded")
+
+                // Ensure selected course has videos loaded
+                if let selectedID = self.selectedCourseID,
+                   let idx = self.courseIndex(for: selectedID),
+                   self.courses[idx].videos.isEmpty {
+                    await self.loadVideos(for: self.courses[idx])
+                }
+            }
+            self.loadCoursesTask = incrementalTask
+
+            // Await completion (cancellation propagates naturally)
+            do { try await incrementalTask.value } catch {
+                ACLog("loadCourses incremental phase cancelled", level: .debug)
+            }
 
             if let selectedCourseID = self.selectedCourseID,
                self.courseIndex(for: selectedCourseID) == nil {
                 self.selectedCourseID = nil
             }
-            
-            // If no course is selected, select the first one and load its videos
-            if self.selectedCourseID == nil, let firstCourse = self.courses.first {
-                print("📚 [DEBUG] Selecting first course: \(firstCourse.folderURL.lastPathComponent)")
-                self.selectCourse(firstCourse.id)
-                await self.loadVideos(for: firstCourse)
-            }
         } catch {
             print("讀取課程資料夾失敗: \(error.localizedDescription) at: \(sourceURL.path)")
             print("請確認應用程式有存取所選資料夾的權限，或嘗試重新選擇資料夾")
         }
+        self.isLoadingCourses = false
+        self.coursesLoadingProgress = nil
     }
 
     func loadVideos(for course: Course) async {

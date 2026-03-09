@@ -19,7 +19,7 @@ struct AVPlayerViewRepresentable: NSViewRepresentable {
     func makeNSView(context: Context) -> AVPlayerView {
         let view = AVPlayerView()
         view.controlsStyle = .floating
-        view.showsFullScreenToggleButton = true
+        view.showsFullScreenToggleButton = false
         view.allowsPictureInPicturePlayback = false
         view.updatesNowPlayingInfoCenter = false
         view.player = player

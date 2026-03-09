@@ -33,6 +33,7 @@
 "countdown.due_today" = "今天到期";
 "countdown.filter.overdue" = "已過期";
 "countdown.filter.upcoming" = "即將到期";
+"countdown.filter.with_target" = "已排程";
 "countdown.no_target" = "未設定目標日期";
 "countdown.overdue_days" = "已過期 %d 天";
 "countdown.overview.all_targets" = "所有目標";
@@ -51,6 +52,9 @@
 "countdown.quick.days" = "%d天";
 "countdown.quick.plus_days" = "+%d天";
 "countdown.remaining_days" = "剩餘 %d 天";
+"countdown.stat.overdue" = "已過期";
+"countdown.stat.scheduled" = "已排程";
+"countdown.stat.total" = "全部";
 "countdown.settings.course_status" = "課程狀態概覽";
 "countdown.settings.no_urgent_courses" = "目前沒有即將到期或過期的課程";
 "countdown.settings.overdue_courses" = "已過期課程";
@@ -76,6 +80,9 @@
 "course.statistics_intro" = "在右側選擇影片即可開始播放；這裡會先整理這門課的進度與剩餘內容。";
 "course.video_count" = "%d 部影片";
 "course.waiting_import" = "等待匯入影片";
+
+"loading.courses_progress" = "正在載入影片… (%d/%d)";
+"loading.scanning_folders" = "正在掃描課程資料夾…";
 
 "debug.clear_cache" = "清除快取";
 "debug.clear_records" = "清除紀錄";

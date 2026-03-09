@@ -2,6 +2,7 @@ import SwiftUI
 
 struct CourseRowView: View {
     let course: Course
+    var isSelected: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -52,11 +53,16 @@ struct CourseRowView: View {
             }
         }
         .padding(14)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .background(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(isSelected ? accentColor.opacity(0.10) : .clear)
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        )
         .overlay(
             RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .strokeBorder(accentColor.opacity(0.18))
+                .strokeBorder(isSelected ? accentColor.opacity(0.6) : accentColor.opacity(0.18), lineWidth: isSelected ? 1.8 : 1)
         )
+        .animation(.easeInOut(duration: 0.2), value: isSelected)
     }
 
     private var accentColor: Color {

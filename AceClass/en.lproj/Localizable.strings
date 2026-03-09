@@ -33,6 +33,7 @@
 "countdown.due_today" = "Due today";
 "countdown.filter.overdue" = "Overdue";
 "countdown.filter.upcoming" = "Upcoming";
+"countdown.filter.with_target" = "Scheduled";
 "countdown.no_target" = "No target date";
 "countdown.overdue_days" = "Overdue by %d days";
 "countdown.overview.all_targets" = "All Targets";
@@ -51,6 +52,9 @@
 "countdown.quick.days" = "%d days";
 "countdown.quick.plus_days" = "+%d days";
 "countdown.remaining_days" = "%d days remaining";
+"countdown.stat.overdue" = "overdue";
+"countdown.stat.scheduled" = "scheduled";
+"countdown.stat.total" = "total";
 "countdown.settings.course_status" = "Course Status Overview";
 "countdown.settings.no_urgent_courses" = "There are no upcoming or overdue courses right now.";
 "countdown.settings.overdue_courses" = "Overdue Courses";
@@ -76,6 +80,9 @@
 "course.statistics_intro" = "Choose a video on the right to start playback. This dashboard summarizes the course progress first.";
 "course.video_count" = "%d videos";
 "course.waiting_import" = "Waiting for video import";
+
+"loading.courses_progress" = "Loading videos… (%d/%d)";
+"loading.scanning_folders" = "Scanning course folders…";
 
 "debug.clear_cache" = "Clear Cache";
 "debug.clear_records" = "Clear Logs";

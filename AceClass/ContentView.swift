@@ -21,6 +21,7 @@ struct ContentView: View {
                 courseSidebar
             } content: {
                 videoList
+                    .navigationSplitViewColumnWidth(min: 280, ideal: 360, max: 500)
             } detail: {
                 videoPlayerArea
             }
@@ -67,6 +68,16 @@ struct ContentView: View {
                     await appState.handleFolderSelection(result)
                 }
             }
+            .onReceive(NotificationCenter.default.publisher(for: NSWindow.didChangeOcclusionStateNotification)) { notification in
+                guard let window = notification.object as? NSWindow,
+                      window === NSApplication.shared.mainWindow else { return }
+                if !window.occlusionState.contains(.visible) {
+                    appState.player?.pause()
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
+                appState.player?.pause()
+            }
 
             if appState.isVideoPlayerFullScreen, let player = appState.player {
                 FullScreenVideoPlayerView(
@@ -104,11 +115,22 @@ struct ContentView: View {
                     Text(L10n.tr("sidebar.course_list"))
                         .font(.headline)
                     Spacer()
+                    if appState.isLoadingCourses {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
                     Text("\(appState.courses.count)")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
                 }
                 .padding(.horizontal, 16)
+
+                if appState.isLoadingCourses, let progress = appState.coursesLoadingProgress {
+                    Text(progress)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 16)
+                }
 
                 if appState.courses.isEmpty {
                     EmptyStateCard(
@@ -119,22 +141,20 @@ struct ContentView: View {
                     .padding(.horizontal, 16)
                     Spacer()
                 } else {
-                    List(selection: $localSelectedCourseID) {
-                        ForEach(appState.courses) { course in
-                            CourseRowView(course: course)
-                                .tag(course.id)
-                                .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
-                                .listRowSeparator(.hidden)
-                                .listRowBackground(Color.clear)
+                    ScrollView {
+                        LazyVStack(spacing: 12) {
+                            ForEach(appState.courses) { course in
+                                CourseRowView(course: course, isSelected: localSelectedCourseID == course.id)
+                                    .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                                    .onTapGesture {
+                                        localSelectedCourseID = course.id
+                                        if course.id != appState.selectedCourseID {
+                                            appState.selectCourse(course.id)
+                                        }
+                                    }
+                            }
                         }
-                    }
-                    .listStyle(.plain)
-                    .scrollContentBackground(.hidden)
-                    .padding(.horizontal, 12)
-                    .onChange(of: localSelectedCourseID) { _, newValue in
-                        if newValue != appState.selectedCourseID {
-                            appState.selectCourse(newValue)
-                        }
+                        .padding(.horizontal, 12)
                     }
                     .onChange(of: appState.selectedCourseID) { _, newValue in
                         if newValue != localSelectedCourseID {
