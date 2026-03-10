@@ -4,6 +4,35 @@ import Combine
 
 @MainActor
 class AppState: ObservableObject {
+    enum PlayerLoadingStage: Int {
+        case idle
+        case preparing
+        case checkingSource
+        case checkingCache
+        case creatingPlayer
+        case ready
+        case failed
+
+        var defaultProgress: Double {
+            switch self {
+            case .idle:
+                return 0
+            case .preparing:
+                return 0.12
+            case .checkingSource:
+                return 0.28
+            case .checkingCache:
+                return 0.56
+            case .creatingPlayer:
+                return 0.84
+            case .ready:
+                return 1.0
+            case .failed:
+                return 0
+            }
+        }
+    }
+
     // MARK: - Published Properties
     @Published var courses: [Course] = [] {
         didSet {
@@ -60,6 +89,9 @@ class AppState: ObservableObject {
     @Published var enableVideoCaching: Bool = true // 小於閾值影片先複製到本地快取
     @Published var playerLoadingTitle: String? = nil
     @Published var playerLoadingDetail: String? = nil
+    @Published var playerLoadingStage: PlayerLoadingStage = .idle
+    @Published var playerLoadingProgress: Double = 0
+    @Published var playerLoadingDidFail = false
     @Published var isLoadingCourses: Bool = false
     @Published var coursesLoadingProgress: String? = nil
 
@@ -69,7 +101,9 @@ class AppState: ObservableObject {
     private var currentlyAccessedVideoURL: URL? // 持有當前播放影片的獨立安全作用域存取權
     private var activeCacheOriginalPath: String? // 正在播放的影片原始路徑，用於快取保護
     private var timeObserverToken: Any? // NEW periodic time observer token
-    private let playbackProgressAutoMarkThreshold: Double = 0.75 // 75%
+    private let playbackProgressAutoMarkThreshold: Double = 0.98
+    private let playbackAutoMarkMinimumRemainingSeconds: Double = 5
+    private let playbackAutoMarkMaximumRemainingSeconds: Double = 20
     private let playbackPeriodicUpdateInterval: CMTime = CMTime(seconds: 5, preferredTimescale: 600) // every ~5s
     private var playbackDebounceTask: Task<Void, Never>? // 續播位置寫入 debounce
     private let playbackDebounceInterval: TimeInterval = 12 // 秒
@@ -79,6 +113,7 @@ class AppState: ObservableObject {
     private let videoSelectionDebounceIntervalWhileInitializing: TimeInterval = 0.3
     // Observer for player item failure notifications
     private var playerItemFailedObserver: NSObjectProtocol? = nil
+    private var playerItemDidPlayToEndObserver: NSObjectProtocol? = nil
     private var playerItemStatusObserver: NSKeyValueObservation? = nil
     private var playerItemErrorLogObserver: NSObjectProtocol? = nil
     // Diagnostics
@@ -127,6 +162,26 @@ class AppState: ObservableObject {
     nonisolated static var supportedVideoFormatsDescription: String {
         supportedVideoExtensions.map { ".\($0)" }.joined(separator: ", ")
     }
+
+    nonisolated static func shouldAutoMarkVideoAsWatched(
+        currentSeconds: Double,
+        durationSeconds: Double,
+        progressThreshold: Double = 0.98,
+        minimumRemainingSeconds: Double = 5,
+        maximumRemainingSeconds: Double = 20
+    ) -> Bool {
+        guard currentSeconds.isFinite,
+              durationSeconds.isFinite,
+              currentSeconds >= 0,
+              durationSeconds > 0 else {
+            return false
+        }
+
+        let progress = currentSeconds / durationSeconds
+        let remainingSeconds = max(durationSeconds - currentSeconds, 0)
+        let remainingThreshold = min(max(minimumRemainingSeconds, durationSeconds * 0.02), maximumRemainingSeconds)
+        return progress >= progressThreshold || remainingSeconds <= remainingThreshold
+    }
     
     // MARK: - Initializer & Deinitializer
     init(loadPersistedBookmark: Bool = true) {
@@ -140,6 +195,7 @@ class AppState: ObservableObject {
     deinit {
         // App 結束時，清理所有安全作用域存取權
     if let obs = playerItemFailedObserver { NotificationCenter.default.removeObserver(obs) }
+    if let obs = playerItemDidPlayToEndObserver { NotificationCenter.default.removeObserver(obs) }
     playerItemStatusObserver?.invalidate()
         if let url = currentlyAccessedVideoURL {
             url.stopAccessingSecurityScopedResource()
@@ -178,6 +234,13 @@ class AppState: ObservableObject {
 
     private func normalizedCoursePath(_ folderURL: URL) -> String {
         folderURL.standardizedFileURL.resolvingSymlinksInPath().path
+    }
+
+    @MainActor
+    func publishCoursesSnapshot() {
+        // Nested mutations on value types inside `courses` do not reliably trigger
+        // a view refresh across the whole sidebar. Reassign the array to publish.
+        courses = Array(courses)
     }
 
     nonisolated static func isSupportedVideoFile(_ url: URL) -> Bool {
@@ -306,16 +369,41 @@ class AppState: ObservableObject {
                 }
             }
             let duration = player.currentItem?.duration.seconds ?? 0
-            if duration > 0, currentSeconds / duration >= self.playbackProgressAutoMarkThreshold {
-                if self.courses[courseIndex].videos[videoIndex].watched == false {
-                    ACLog("Marking video as watched at progress \(currentSeconds/duration)", level: .info)
-                    self.courses[courseIndex].videos[videoIndex].watched = true
-                    // Immediate save (override debounce)
-                    self.playbackDebounceTask?.cancel(); self.playbackDebounceTask = nil
-                    Task { await self.saveVideos(for: self.courses[courseIndex].id) }
-                }
+            if Self.shouldAutoMarkVideoAsWatched(
+                currentSeconds: currentSeconds,
+                durationSeconds: duration,
+                progressThreshold: playbackProgressAutoMarkThreshold,
+                minimumRemainingSeconds: playbackAutoMarkMinimumRemainingSeconds,
+                maximumRemainingSeconds: playbackAutoMarkMaximumRemainingSeconds
+            ) {
+                autoMarkVideoAsWatched(courseIndex: courseIndex, videoIndex: videoIndex, reason: "near-end-progress")
             }
         }
+    }
+
+    @MainActor
+    private func autoMarkVideoAsWatched(courseIndex: Int, videoIndex: Int, reason: String) {
+        guard courses.indices.contains(courseIndex),
+              courses[courseIndex].videos.indices.contains(videoIndex) else { return }
+
+        let video = courses[courseIndex].videos[videoIndex]
+        guard video.watched == false else { return }
+
+        ACLog("Auto-marking watched reason=\(reason) file=\(video.fileName)", level: .info)
+        courses[courseIndex].videos[videoIndex].watched = true
+        courses[courseIndex].videos[videoIndex].lastPlaybackPosition = nil
+
+        if currentVideo?.id == video.id {
+            currentVideo = courses[courseIndex].videos[videoIndex]
+        }
+
+        resumeOverlayText = nil
+        publishCoursesSnapshot()
+
+        playbackDebounceTask?.cancel()
+        playbackDebounceTask = nil
+        let courseID = courses[courseIndex].id
+        Task { await saveVideos(for: courseID) }
     }
 
     @MainActor
@@ -354,6 +442,7 @@ class AppState: ObservableObject {
         }
     // Remove failure observer from previous item if any
     if let obs = playerItemFailedObserver { NotificationCenter.default.removeObserver(obs); playerItemFailedObserver = nil }
+    if let obs = playerItemDidPlayToEndObserver { NotificationCenter.default.removeObserver(obs); playerItemDidPlayToEndObserver = nil }
     playerItemStatusObserver?.invalidate(); playerItemStatusObserver = nil
     if let obs = playerItemErrorLogObserver { NotificationCenter.default.removeObserver(obs); playerItemErrorLogObserver = nil }
         
@@ -376,8 +465,7 @@ class AppState: ObservableObject {
                 self.player = nil
                 self.captionsForCurrentVideo = []
                 self.captionError = nil
-                self.playerLoadingTitle = nil
-                self.playerLoadingDetail = nil
+                clearPlayerLoadingState()
                 isInitializingPlayer = false
                 return
             }
@@ -386,14 +474,12 @@ class AppState: ObservableObject {
             ACLog("Setting currentVideo to: \(video?.fileName ?? "unknown")", level: .debug)
             self.currentVideo = video
             self.player = nil
-            self.playerLoadingTitle = L10n.tr("player.loading.preparing")
-            self.playerLoadingDetail = video?.fileName
+            setPlayerLoadingState(.preparing, title: L10n.tr("player.loading.preparing"), detail: video?.fileName)
 
             guard let course = selectedCourse, let videoToPlay = video else { return }
             guard let sourceFolderURL = self.securityScopedURL else {
                 ACLog("Cannot play video because the main folder's security scope is missing.", level: .critical)
-                self.playerLoadingTitle = L10n.tr("player.loading.unable")
-                self.playerLoadingDetail = L10n.tr("player.loading.missing_folder_access")
+                failPlayerLoading(title: L10n.tr("player.loading.unable"), detail: L10n.tr("player.loading.missing_folder_access"), progress: 0.18)
                 diagnostics.playerInitFailure += 1
                 finalizeInitDiagnostics(success: false)
                 return
@@ -403,11 +489,9 @@ class AppState: ObservableObject {
             if sourceFolderURL.startAccessingSecurityScopedResource() {
                 var fileURL = course.folderURL.appendingPathComponent(videoToPlay.relativePath)
                 ACLog("Preparing video URL: \(fileURL.lastPathComponent)", level: .debug)
-                self.playerLoadingTitle = L10n.tr("player.loading.checking_source")
-                self.playerLoadingDetail = videoToPlay.fileName
+                setPlayerLoadingState(.checkingSource, title: L10n.tr("player.loading.checking_source"), detail: videoToPlay.fileName)
                 if enableVideoCaching {
-                    self.playerLoadingTitle = L10n.tr("player.loading.preparing_file")
-                    self.playerLoadingDetail = L10n.tr("player.loading.checking_cache")
+                    setPlayerLoadingState(.checkingCache, title: L10n.tr("player.loading.preparing_file"), detail: L10n.tr("player.loading.checking_cache"))
                     let originalPath = fileURL.path
                     do {
                         let cached = try await VideoCacheManager.shared.preparePlaybackURL(for: fileURL)
@@ -418,17 +502,40 @@ class AppState: ObservableObject {
                             activeCacheOriginalPath = originalPath
                             fileURL = cached
                             self.playerLoadingDetail = L10n.tr("player.loading.using_cached_copy")
+                            self.playerLoadingProgress = 0.68
                         } else {
                             self.playerLoadingDetail = L10n.tr("player.loading.using_original")
+                            self.playerLoadingProgress = 0.64
                         }
                     } catch {
                         ACLog("Cache prepare failed (use original): \(error.localizedDescription)", level: .warn)
                         self.playerLoadingDetail = L10n.tr("player.loading.cache_unavailable")
+                        self.playerLoadingProgress = 0.6
+                    }
+                }
+                if PlaybackCompatibilityManager.requiresCompatibilityCopy(for: fileURL) {
+                    setPlayerLoadingState(.checkingCache, title: L10n.tr("player.loading.preparing_file"), detail: L10n.tr("player.loading.checking_compatibility"), progress: 0.72)
+                    do {
+                        let compatibleURL = try await PlaybackCompatibilityManager.shared.preparePlayableURL(for: fileURL)
+                        if compatibleURL != fileURL {
+                            ACLog("Using MKV compatibility copy for playback: \(compatibleURL.lastPathComponent)", level: .info)
+                            fileURL = compatibleURL
+                            self.playerLoadingDetail = L10n.tr("player.loading.using_compatible_copy")
+                            self.playerLoadingProgress = 0.78
+                        } else {
+                            self.playerLoadingDetail = L10n.tr("player.loading.using_original")
+                            self.playerLoadingProgress = 0.76
+                        }
+                    } catch {
+                        ACLog("MKV compatibility preparation failed: \(error.localizedDescription)", level: .error)
+                        failPlayerLoading(title: L10n.tr("player.loading.failed"), detail: error.localizedDescription, progress: 0.78)
+                        diagnostics.playerInitFailure += 1
+                        finalizeInitDiagnostics(success: false)
+                        return
                     }
                 }
                 ACLog("Creating AVPlayer for: \(fileURL.path)", level: .debug)
-                self.playerLoadingTitle = L10n.tr("player.loading.starting")
-                self.playerLoadingDetail = L10n.tr("player.loading.session_setup")
+                setPlayerLoadingState(.creatingPlayer, title: L10n.tr("player.loading.starting"), detail: L10n.tr("player.loading.session_setup"))
                 let newPlayer = AVPlayer(url: fileURL)
                 self.player = newPlayer
                 let initSuccessMark: @Sendable () -> Void = { [weak self] in
@@ -440,6 +547,16 @@ class AppState: ObservableObject {
                 }
                 // Attach failure observer
                 if let item = newPlayer.currentItem {
+                    playerItemDidPlayToEndObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main) { [weak self] _ in
+                        Task { @MainActor [weak self] in
+                            guard let self,
+                                  let courseIndex = self.selectedCourseIndex,
+                                  let currentVideo = self.currentVideo,
+                                  let videoIndex = self.courses[courseIndex].videos.firstIndex(where: { $0.id == currentVideo.id }) else { return }
+                            self.autoMarkVideoAsWatched(courseIndex: courseIndex, videoIndex: videoIndex, reason: "play-to-end")
+                        }
+                    }
+
                     playerItemFailedObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemFailedToPlayToEndTime, object: item, queue: .main) { [weak self] note in
                         Task { @MainActor [weak self] in
                             guard let self else { return }
@@ -450,15 +567,13 @@ class AppState: ObservableObject {
                                     self.diagnostics.benignCancellations += 1
                                 } else {
                                     ACLog("Playback failed code=\(ns.code) domain=\(ns.domain) desc=\(err.localizedDescription)", level: .error)
-                                    self.playerLoadingTitle = L10n.tr("player.loading.failed")
-                                    self.playerLoadingDetail = err.localizedDescription
+                                    self.failPlayerLoading(title: L10n.tr("player.loading.failed"), detail: err.localizedDescription, progress: max(self.playerLoadingProgress, 0.84))
                                     self.diagnostics.playerInitFailure += 1
                                 }
                                 self.finalizeInitDiagnostics(success: false)
                             } else {
                                 ACLog("Playback failed (no error info)", level: .error)
-                                self.playerLoadingTitle = L10n.tr("player.loading.failed")
-                                self.playerLoadingDetail = L10n.tr("player.loading.no_error_details")
+                                self.failPlayerLoading(title: L10n.tr("player.loading.failed"), detail: L10n.tr("player.loading.no_error_details"), progress: max(self.playerLoadingProgress, 0.84))
                                 self.diagnostics.playerInitFailure += 1
                                 self.finalizeInitDiagnostics(success: false)
                             }
@@ -475,8 +590,7 @@ class AppState: ObservableObject {
                             let code = (err as? NSError)?.code ?? 0
                             ACLog("AVPlayerItem status failed: code=\(code) desc=\(desc)", level: .error)
                             self.player?.pause()
-                            self.playerLoadingTitle = L10n.tr("player.loading.failed")
-                            self.playerLoadingDetail = desc
+                            self.failPlayerLoading(title: L10n.tr("player.loading.failed"), detail: desc, progress: max(self.playerLoadingProgress, 0.84))
                             self.isInitializingPlayer = true // Show error overlay
                         }
                     }
@@ -511,8 +625,8 @@ class AppState: ObservableObject {
                     }
                 }
                 self.player?.play()
-                self.playerLoadingTitle = nil
-                self.playerLoadingDetail = nil
+                setPlayerLoadingState(.ready, title: L10n.tr("player.loading.starting"), detail: L10n.tr("player.loading.session_setup"))
+                clearPlayerLoadingState()
                 initSuccessMark()
                 // Setup periodic observer for position + auto-mark
                 if timeObserverToken == nil, let player = self.player {
@@ -572,8 +686,7 @@ class AppState: ObservableObject {
                 self.currentlyAccessedVideoURL = sourceFolderURL
             } else {
                 ACLog("Failed to start security-scoped access for the source folder.", level: .error)
-                self.playerLoadingTitle = L10n.tr("player.loading.unable")
-                self.playerLoadingDetail = L10n.tr("player.loading.security_scope_failed")
+                failPlayerLoading(title: L10n.tr("player.loading.unable"), detail: L10n.tr("player.loading.security_scope_failed"), progress: 0.22)
                 diagnostics.playerInitFailure += 1
                 finalizeInitDiagnostics(success: false)
             }
@@ -614,6 +727,29 @@ class AppState: ObservableObject {
         ACLog("DIAG[\(context)] selReq=\(diagnostics.selectionRequests) exec=\(diagnostics.executedSelections) success=\(diagnostics.playerInitSuccess) fail=\(diagnostics.playerInitFailure) benignCancel=\(diagnostics.benignCancellations) lastInit=\(String(format: "%.3f", diagnostics.lastInitDuration))s avgInit=\(String(format: "%.3f", diagnostics.avgInitDuration))s", level: .trace)
     }
 
+    private func setPlayerLoadingState(_ stage: PlayerLoadingStage, title: String, detail: String? = nil, progress: Double? = nil) {
+        playerLoadingStage = stage
+        playerLoadingProgress = progress ?? stage.defaultProgress
+        playerLoadingDidFail = false
+        playerLoadingTitle = title
+        playerLoadingDetail = detail
+    }
+
+    private func failPlayerLoading(title: String, detail: String? = nil, progress: Double? = nil) {
+        playerLoadingDidFail = true
+        playerLoadingProgress = progress ?? playerLoadingProgress
+        playerLoadingTitle = title
+        playerLoadingDetail = detail
+    }
+
+    private func clearPlayerLoadingState() {
+        playerLoadingStage = .idle
+        playerLoadingProgress = 0
+        playerLoadingDidFail = false
+        playerLoadingTitle = nil
+        playerLoadingDetail = nil
+    }
+
     @MainActor
     private func markVideoAsWatched(_ video: VideoItem) async {
         // deprecated in favor of observer-based auto mark; keep for manual calls if needed
@@ -621,9 +757,7 @@ class AppState: ObservableObject {
     }
 
     func toggleFullScreen() {
-        withAnimation {
-            isVideoPlayerFullScreen.toggle()
-        }
+        isVideoPlayerFullScreen.toggle()
     }
 
     // MARK: - Data Handling & Permissions
@@ -1059,6 +1193,7 @@ class AppState: ObservableObject {
             guard let courseIndex = self.courseIndex(for: course.id) else { return }
             print("🎬 [DEBUG] Applying loadVideos result on @MainActor for: \(course.folderURL.lastPathComponent)")
             self.courses[courseIndex].videos = updatedVideos
+            self.publishCoursesSnapshot()
             print("為課程 \(course.folderURL.lastPathComponent) 載入/更新了 \(updatedVideos.count) 個影片。")
             
             // Save updated video data
@@ -1072,6 +1207,7 @@ class AppState: ObservableObject {
     @MainActor
     func saveVideos(for courseID: UUID) async {
         guard let courseIndex = courseIndex(for: courseID) else { return }
+        publishCoursesSnapshot()
         let course = courses[courseIndex]
         
         // Capture all needed data before going to background

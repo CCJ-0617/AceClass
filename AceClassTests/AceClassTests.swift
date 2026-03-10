@@ -1,4 +1,5 @@
 import XCTest
+import AVFoundation
 @testable import AceClass
 
 final class AceClassTests: XCTestCase {
@@ -7,6 +8,50 @@ final class AceClassTests: XCTestCase {
         XCTAssertTrue(AppState.supportedVideoExtensions.contains("mpeg"))
         XCTAssertTrue(AppState.supportedVideoExtensions.contains("mts"))
         XCTAssertTrue(AppState.supportedVideoExtensions.contains("3gp"))
+    }
+
+    func testPlaybackCompatibilityManagerMarksMKVForFallback() {
+        XCTAssertTrue(PlaybackCompatibilityManager.requiresCompatibilityCopy(for: URL(fileURLWithPath: "/tmp/lesson.mkv")))
+        XCTAssertFalse(PlaybackCompatibilityManager.requiresCompatibilityCopy(for: URL(fileURLWithPath: "/tmp/lesson.mp4")))
+    }
+
+    func testPlaybackCompatibilityManagerCreatesPlayableCopyForMKV() async throws {
+        let ffmpegURL: URL
+        do {
+            ffmpegURL = try PlaybackCompatibilityManager.ffmpegExecutableURL()
+        } catch {
+            throw XCTSkip("ffmpeg is not installed in this environment")
+        }
+
+        let rootURL = try makeTempDirectory()
+        let mkvURL = rootURL.appendingPathComponent("sample.mkv")
+
+        try await runProcess(
+            executableURL: ffmpegURL,
+            arguments: [
+                "-y",
+                "-v", "error",
+                "-f", "lavfi",
+                "-i", "testsrc=size=320x240:rate=25",
+                "-f", "lavfi",
+                "-i", "sine=frequency=880:sample_rate=48000",
+                "-t", "2",
+                "-c:v", "libx264",
+                "-pix_fmt", "yuv420p",
+                "-c:a", "aac",
+                mkvURL.path
+            ]
+        )
+
+        let mkvPlayable = await PlaybackCompatibilityManager.isNativelyPlayable(mkvURL)
+        XCTAssertFalse(mkvPlayable)
+
+        let compatibleURL = try await PlaybackCompatibilityManager.shared.preparePlayableURL(for: mkvURL)
+
+        XCTAssertEqual(compatibleURL.pathExtension.lowercased(), "mp4")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: compatibleURL.path))
+        let compatiblePlayable = await PlaybackCompatibilityManager.isNativelyPlayable(compatibleURL)
+        XCTAssertTrue(compatiblePlayable)
     }
 
     func testStorageKeyIsStableForEquivalentFolderURLs() {
@@ -55,6 +100,24 @@ final class AceClassTests: XCTestCase {
         let item = VideoItem(fileName: "week1.mp4")
 
         XCTAssertEqual(item.note, "")
+    }
+
+    func testAutoMarkWatchedDoesNotTriggerAtSeventyFivePercent() {
+        XCTAssertFalse(
+            AppState.shouldAutoMarkVideoAsWatched(currentSeconds: 75, durationSeconds: 100)
+        )
+    }
+
+    func testAutoMarkWatchedTriggersNearEndByProgress() {
+        XCTAssertTrue(
+            AppState.shouldAutoMarkVideoAsWatched(currentSeconds: 98, durationSeconds: 100)
+        )
+    }
+
+    func testAutoMarkWatchedTriggersNearEndByRemainingSeconds() {
+        XCTAssertTrue(
+            AppState.shouldAutoMarkVideoAsWatched(currentSeconds: 294, durationSeconds: 300)
+        )
     }
 
     @MainActor
@@ -196,5 +259,24 @@ final class AceClassTests: XCTestCase {
             return true
         }
         return false
+    }
+
+    private func runProcess(executableURL: URL, arguments: [String]) async throws {
+        try await Task.detached {
+            let process = Process()
+            process.executableURL = executableURL
+            process.arguments = arguments
+
+            let stdout = Pipe()
+            let stderr = Pipe()
+            process.standardOutput = stdout
+            process.standardError = stderr
+
+            try process.run()
+            process.waitUntilExit()
+
+            let errorOutput = String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+            XCTAssertEqual(process.terminationStatus, 0, errorOutput)
+        }.value
     }
 }

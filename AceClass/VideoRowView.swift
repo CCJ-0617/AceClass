@@ -11,6 +11,7 @@ struct VideoRowView: View {
     @Binding var video: VideoItem
     let videoURL: URL
     let isPlaying: Bool
+    let changeAction: () -> Void
     let playAction: () async -> Void
     let saveAction: () async -> Void
     @FocusState private var isTitleFieldFocused: Bool
@@ -235,6 +236,7 @@ struct VideoRowView: View {
     private func toggleWatched() {
         Task {
             video.watched.toggle()
+            changeAction()
             await saveAction()
         }
     }
@@ -253,6 +255,7 @@ struct VideoRowView: View {
                 .textFieldStyle(.plain)
                 .focused($isTitleFieldFocused)
                 .onChange(of: video.displayName) { _, _ in
+                    changeAction()
                     save()
                 }
                 .onChange(of: isTitleFieldFocused) { _, focused in

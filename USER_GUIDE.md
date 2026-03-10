@@ -9,6 +9,7 @@ AceClass helps you organize recorded class videos on macOS. After you select a r
 - macOS 15.4 or later
 - A folder structure where each course is stored in its own subfolder
 - Video files in supported formats: `.mp4`, `.mov`, `.m4v`, `.mkv`, `.avi`, `.mpg`, `.mpeg`, `.mts`, `.m2ts`, `.ts`, `.3gp`, `.3g2`
+- For `.mkv`, AceClass may prepare a compatible local playback copy before starting playback
 
 ## Recommended Folder Structure
 
@@ -146,10 +147,11 @@ If needed, reselect the folder from the sidebar button.
 
 Check the following:
 
-- The file is a valid `.mp4`.
+- The file is a valid video file.
 - The file is not corrupted.
 - The external drive is still connected.
 - The app still has permission to the folder.
+- If it is an `.mkv`, make sure `ffmpeg` is installed so AceClass can prepare a compatible playback copy when macOS cannot open the file directly.
 
 ### Watch Status Looks Wrong
 

@@ -137,16 +137,23 @@
 "player.captions_unavailable" = "Captions unavailable";
 "player.loading.cache_unavailable" = "Cache unavailable, using the original file instead";
 "player.loading.checking_cache" = "Checking local cache and file access permissions";
+"player.loading.checking_compatibility" = "Checking MKV compatibility";
 "player.loading.checking_source" = "Checking playback source";
+"player.loading.compatibility_failed" = "Unable to prepare this MKV file for playback.";
+"player.loading.compatibility_failed_detail" = "Unable to prepare this MKV file for playback: %@";
+"player.loading.compatibility_output_unplayable" = "A compatible playback copy was created, but macOS still could not open it.";
+"player.loading.ffmpeg_missing" = "This MKV file needs a compatibility conversion, but ffmpeg is not installed.";
 "player.loading.failed" = "Playback Failed";
 "player.loading.missing_folder_access" = "The source folder permission is missing. Please reselect the folder.";
 "player.loading.no_error_details" = "The player did not return any usable error details.";
 "player.loading.preparing" = "Preparing Video";
 "player.loading.preparing_file" = "Preparing Playback File";
+"player.loading.auto_play_hint" = "Playback will start automatically once setup is complete.";
 "player.loading.security_scope_failed" = "Unable to obtain secure access to the source folder.";
 "player.loading.session_setup" = "Creating the playback session and resume point";
 "player.loading.starting" = "Starting Player";
 "player.loading.unable" = "Unable to Load Video";
+"player.loading.using_compatible_copy" = "Using a compatible local playback copy";
 "player.loading.using_cached_copy" = "Switched to the local cached copy and getting the player ready";
 "player.loading.using_original" = "Using the original video file directly";
 "player.loading.video" = "Loading Video";
@@ -154,7 +161,9 @@
 "player.placeholder.loading_subtitle" = "AceClass is preparing playback for “%@”. Playback will start automatically when ready.";
 "player.placeholder.select_video" = "Select a video";
 "player.resume_overlay" = "Resume from %02d:%02d";
+"player.status.prepare" = "Prepare";
 "player.status.check_source" = "Check Source";
+"player.status.check_cache" = "Check Cache";
 "player.status.create_player" = "Create Player";
 
 "sidebar.change_folder" = "Change Folder";

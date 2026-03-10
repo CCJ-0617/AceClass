@@ -147,7 +147,11 @@ struct ContentView: View {
                                 CourseRowView(course: course, isSelected: localSelectedCourseID == course.id)
                                     .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                                     .onTapGesture {
-                                        localSelectedCourseID = course.id
+                                        if localSelectedCourseID != course.id {
+                                            withAnimation(.smooth(duration: 0.18)) {
+                                                localSelectedCourseID = course.id
+                                            }
+                                        }
                                         if course.id != appState.selectedCourseID {
                                             appState.selectCourse(course.id)
                                         }
@@ -158,7 +162,9 @@ struct ContentView: View {
                     }
                     .onChange(of: appState.selectedCourseID) { _, newValue in
                         if newValue != localSelectedCourseID {
-                            localSelectedCourseID = newValue
+                            withAnimation(.smooth(duration: 0.18)) {
+                                localSelectedCourseID = newValue
+                            }
                         }
                     }
                 }
@@ -203,6 +209,9 @@ struct ContentView: View {
                                     video: $video,
                                     videoURL: course.folderURL.appendingPathComponent(video.relativePath),
                                     isPlaying: appState.currentVideo?.id == video.id,
+                                    changeAction: {
+                                        appState.publishCoursesSnapshot()
+                                    },
                                     playAction: {
                                         appState.scheduleSelectVideo(video)
                                     },

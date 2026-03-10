@@ -62,7 +62,7 @@ struct CourseRowView: View {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .strokeBorder(isSelected ? accentColor.opacity(0.6) : accentColor.opacity(0.18), lineWidth: isSelected ? 1.8 : 1)
         )
-        .animation(.easeInOut(duration: 0.2), value: isSelected)
+        .animation(.smooth(duration: 0.18), value: isSelected)
     }
 
     private var accentColor: Color {

@@ -137,16 +137,23 @@
 "player.captions_unavailable" = "字幕不可用";
 "player.loading.cache_unavailable" = "快取不可用，改用原始影片檔";
 "player.loading.checking_cache" = "檢查本機快取與檔案存取權限";
+"player.loading.checking_compatibility" = "正在檢查 MKV 相容性";
 "player.loading.checking_source" = "正在檢查播放來源";
+"player.loading.compatibility_failed" = "無法將此 MKV 檔準備成可播放格式。";
+"player.loading.compatibility_failed_detail" = "無法將此 MKV 檔準備成可播放格式：%@";
+"player.loading.compatibility_output_unplayable" = "已建立相容播放副本，但 macOS 仍無法開啟它。";
+"player.loading.ffmpeg_missing" = "這個 MKV 檔需要先做相容性轉換，但系統找不到 ffmpeg。";
 "player.loading.failed" = "播放失敗";
 "player.loading.missing_folder_access" = "找不到來源資料夾權限，請重新選擇資料夾。";
 "player.loading.no_error_details" = "播放器沒有回傳可用的錯誤資訊。";
 "player.loading.preparing" = "正在準備影片";
 "player.loading.preparing_file" = "正在準備播放檔案";
+"player.loading.auto_play_hint" = "準備完成後會自動開始播放。";
 "player.loading.security_scope_failed" = "無法取得來源資料夾的安全存取權限。";
 "player.loading.session_setup" = "建立播放工作階段與續播位置";
 "player.loading.starting" = "正在啟動播放器";
 "player.loading.unable" = "無法載入影片";
+"player.loading.using_compatible_copy" = "已切換為相容播放副本";
 "player.loading.using_cached_copy" = "已切換為本機快取版本，準備開啟播放器";
 "player.loading.using_original" = "直接使用原始影片檔";
 "player.loading.video" = "正在載入影片";
@@ -154,7 +161,9 @@
 "player.placeholder.loading_subtitle" = "AceClass 正在為「%@」建立播放環境，載入完成後會自動開始播放。";
 "player.placeholder.select_video" = "請選擇一部影片";
 "player.resume_overlay" = "從上次位置續播 %02d:%02d";
+"player.status.prepare" = "準備檔案";
 "player.status.check_source" = "檢查來源";
+"player.status.check_cache" = "檢查快取";
 "player.status.create_player" = "建立播放器";
 
 "sidebar.change_folder" = "更換資料夾";

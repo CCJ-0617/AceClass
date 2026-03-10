@@ -38,6 +38,27 @@ struct AVPlayerViewRepresentable: NSViewRepresentable {
 struct VideoPlayerView: View {
     @ObservedObject var appState: AppState
     @Binding var isFullScreen: Bool
+
+    private struct LoadingCheckpoint: Identifiable {
+        enum Status {
+            case done
+            case active
+            case pending
+            case failed
+        }
+
+        let stage: AppState.PlayerLoadingStage
+        let icon: String
+        let title: String
+        let status: Status
+
+        var id: AppState.PlayerLoadingStage { stage }
+    }
+
+    private let loadingOverlayAnimation = Animation.smooth(duration: 0.20)
+    private let selectionAnimation = Animation.smooth(duration: 0.18)
+    private let loadingOverlayTransition = AnyTransition.opacity.combined(with: .scale(scale: 0.985))
+    private let resumeOverlayTransition = AnyTransition.move(edge: .bottom).combined(with: .opacity)
     
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
@@ -46,16 +67,25 @@ struct VideoPlayerView: View {
 #if os(macOS)
                 AVPlayerViewRepresentable(player: player)
                     .frame(minWidth: 1, minHeight: 1)
+                    .transaction { transaction in
+                        transaction.animation = nil
+                    }
 #else
                 VideoPlayer(player: player)
                     .frame(minWidth: 1, minHeight: 1)
+                    .transaction { transaction in
+                        transaction.animation = nil
+                    }
 #endif
 
-                if appState.isInitializingPlayer {
-                    playerLoadingOverlay
-                        .padding(24)
-                        .transition(.opacity)
+                Group {
+                    if appState.isInitializingPlayer {
+                        playerLoadingOverlay
+                            .padding(24)
+                            .transition(loadingOverlayTransition)
+                    }
                 }
+                .animation(loadingOverlayAnimation, value: appState.isInitializingPlayer)
             } else {
                 playerPlaceholder
             }
@@ -105,9 +135,7 @@ struct VideoPlayerView: View {
             
             // 控制按鈕群
             Button(action: {
-                withAnimation {
-                    isFullScreen.toggle()
-                }
+                isFullScreen.toggle()
             }) {
                 Image(systemName: "arrow.up.left.and.arrow.down.right")
                     .font(.title3.weight(.bold))
@@ -142,17 +170,21 @@ struct VideoPlayerView: View {
             }
             
             // Resume overlay text
-            if let overlay = appState.resumeOverlayText {
-                VStack { Spacer(); HStack { Spacer(); Text(overlay)
-                        .font(.caption.bold())
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Color.black.opacity(0.55))
-                        .foregroundColor(.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                        .padding(12)
-                }}.transition(.opacity).animation(.easeInOut(duration: 0.3), value: appState.resumeOverlayText)
+            Group {
+                if let overlay = appState.resumeOverlayText {
+                    VStack { Spacer(); HStack { Spacer(); Text(overlay)
+                            .font(.caption.bold())
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(Color.black.opacity(0.55))
+                            .foregroundColor(.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .padding(12)
+                    }}
+                    .transition(resumeOverlayTransition)
+                }
             }
+            .animation(selectionAnimation, value: appState.resumeOverlayText)
         }
     }
 
@@ -216,12 +248,16 @@ struct VideoPlayerView: View {
     }
 
     private var playerLoadingCard: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .top, spacing: 14) {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(alignment: .top, spacing: 16) {
                 ZStack {
                     Circle()
-                        .fill((isLoadingFailure ? Color.red : Color.accentColor).opacity(0.18))
-                        .frame(width: 48, height: 48)
+                        .fill(loadingTint.opacity(0.18))
+                        .frame(width: 54, height: 54)
+
+                    Circle()
+                        .strokeBorder(loadingTint.opacity(0.2), lineWidth: 1.5)
+                        .frame(width: 54, height: 54)
 
                     if isLoadingFailure {
                         Image(systemName: "exclamationmark.triangle.fill")
@@ -236,7 +272,7 @@ struct VideoPlayerView: View {
                     }
                 }
 
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 7) {
                     Text(appState.playerLoadingTitle ?? L10n.tr("player.loading.video"))
                         .font(.headline.weight(.bold))
                         .foregroundStyle(.white)
@@ -252,29 +288,55 @@ struct VideoPlayerView: View {
                         Text(detail)
                             .font(.caption)
                             .foregroundStyle(.white.opacity(0.68))
-                            .lineLimit(2)
+                            .lineLimit(3)
                     }
                 }
 
                 Spacer(minLength: 0)
+
+                Text(loadingProgressText)
+                    .font(.system(.caption, design: .rounded).weight(.bold))
+                    .foregroundStyle(.white.opacity(0.9))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.white.opacity(0.08), in: Capsule())
             }
 
-            VStack(alignment: .leading, spacing: 8) {
-                Capsule()
-                    .fill(
-                        LinearGradient(
-                            colors: [Color.accentColor, Color.white.opacity(0.9), Color.accentColor.opacity(0.8)],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-                    .frame(height: 6)
-
-                HStack(spacing: 8) {
-                    statusChip(icon: "externaldrive.fill.badge.checkmark", text: L10n.tr("player.status.check_source"))
-                    statusChip(icon: "play.rectangle.on.rectangle", text: L10n.tr("player.status.create_player"))
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Text(L10n.tr("player.loading.auto_play_hint"))
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.74))
+                    Spacer(minLength: 12)
                     if let resumeText = appState.currentVideo?.playbackPositionText {
-                        statusChip(icon: "clock.arrow.trianglehead.counterclockwise.rotate.90", text: resumeText)
+                        Label(resumeText, systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.white.opacity(0.82))
+                    }
+                }
+
+                GeometryReader { proxy in
+                    ZStack(alignment: .leading) {
+                        Capsule()
+                            .fill(Color.white.opacity(0.09))
+
+                        Capsule()
+                            .fill(
+                                LinearGradient(
+                                    colors: [loadingTint.opacity(0.95), Color.white.opacity(0.95)],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .frame(width: max(18, proxy.size.width * loadingProgressValue))
+                            .shadow(color: loadingTint.opacity(0.25), radius: 10, x: 0, y: 4)
+                    }
+                }
+                .frame(height: 10)
+
+                HStack(spacing: 10) {
+                    ForEach(loadingCheckpoints) { checkpoint in
+                        loadingCheckpointCard(checkpoint)
                     }
                 }
             }
@@ -283,18 +345,117 @@ struct VideoPlayerView: View {
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.24))
+                .strokeBorder(Color.white.opacity(0.18))
         )
         .shadow(color: .black.opacity(0.18), radius: 18, y: 12)
     }
 
-    private func statusChip(icon: String, text: String) -> some View {
-        Label(text, systemImage: icon)
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(.white.opacity(0.84))
-            .padding(.vertical, 6)
-            .padding(.horizontal, 10)
-            .background(Color.white.opacity(0.08), in: Capsule())
+    private func loadingCheckpointCard(_ checkpoint: LoadingCheckpoint) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: checkpoint.icon)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(checkpointAccent(for: checkpoint.status))
+
+                Spacer(minLength: 0)
+
+                Circle()
+                    .fill(checkpointAccent(for: checkpoint.status))
+                    .frame(width: 8, height: 8)
+            }
+
+            Text(checkpoint.title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.white.opacity(checkpoint.status == .pending ? 0.58 : 0.88))
+                .lineLimit(2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, minHeight: 62, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(checkpointBackground(for: checkpoint.status))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(checkpointAccent(for: checkpoint.status).opacity(0.24))
+        )
+    }
+
+    private var loadingTint: Color {
+        isLoadingFailure ? .red : .accentColor
+    }
+
+    private var loadingProgressValue: Double {
+        min(max(appState.playerLoadingProgress, appState.currentVideo == nil ? 0 : 0.08), 1)
+    }
+
+    private var loadingProgressText: String {
+        "\(Int((loadingProgressValue * 100).rounded()))%"
+    }
+
+    private var loadingCheckpoints: [LoadingCheckpoint] {
+        var specs: [(AppState.PlayerLoadingStage, String, String)] = [
+            (.preparing, "sparkles", L10n.tr("player.status.prepare")),
+            (.checkingSource, "externaldrive.fill.badge.checkmark", L10n.tr("player.status.check_source"))
+        ]
+
+        if appState.enableVideoCaching || appState.playerLoadingStage == .checkingCache {
+            specs.append((.checkingCache, "internaldrive.fill.badge.checkmark", L10n.tr("player.status.check_cache")))
+        }
+
+        specs.append((.creatingPlayer, "play.rectangle.on.rectangle", L10n.tr("player.status.create_player")))
+
+        return specs.map { stage, icon, title in
+            let status: LoadingCheckpoint.Status
+
+            if appState.playerLoadingDidFail {
+                if stage.rawValue < appState.playerLoadingStage.rawValue {
+                    status = .done
+                } else if stage == appState.playerLoadingStage {
+                    status = .failed
+                } else {
+                    status = .pending
+                }
+            } else if appState.playerLoadingStage == .ready {
+                status = .done
+            } else if stage.rawValue < appState.playerLoadingStage.rawValue {
+                status = .done
+            } else if stage == appState.playerLoadingStage {
+                status = .active
+            } else {
+                status = .pending
+            }
+
+            return LoadingCheckpoint(stage: stage, icon: icon, title: title, status: status)
+        }
+    }
+
+    private func checkpointAccent(for status: LoadingCheckpoint.Status) -> Color {
+        switch status {
+        case .done:
+            return Color.green.opacity(0.92)
+        case .active:
+            return loadingTint
+        case .pending:
+            return Color.white.opacity(0.34)
+        case .failed:
+            return Color.red.opacity(0.95)
+        }
+    }
+
+    private func checkpointBackground(for status: LoadingCheckpoint.Status) -> Color {
+        switch status {
+        case .done:
+            return Color.green.opacity(0.10)
+        case .active:
+            return loadingTint.opacity(0.14)
+        case .pending:
+            return Color.white.opacity(0.05)
+        case .failed:
+            return Color.red.opacity(0.14)
+        }
     }
 
     private var placeholderIconName: String {
@@ -325,8 +486,7 @@ struct VideoPlayerView: View {
     }
 
     private var isLoadingFailure: Bool {
-        guard let title = appState.playerLoadingTitle else { return false }
-        return title == L10n.tr("player.loading.failed") || title == L10n.tr("player.loading.unable")
+        appState.playerLoadingDidFail
     }
 }
 
@@ -341,9 +501,17 @@ struct FullScreenVideoPlayerView: View {
         ZStack(alignment: .topTrailing) {
             Color.black.edgesIgnoringSafeArea(.all)
 #if os(macOS)
-            AVPlayerViewRepresentable(player: player).frame(minWidth: 1, minHeight: 1)
+            AVPlayerViewRepresentable(player: player)
+                .frame(minWidth: 1, minHeight: 1)
+                .transaction { transaction in
+                    transaction.animation = nil
+                }
 #else
-            VideoPlayer(player: player).frame(minWidth: 1, minHeight: 1)
+            VideoPlayer(player: player)
+                .frame(minWidth: 1, minHeight: 1)
+                .transaction { transaction in
+                    transaction.animation = nil
+                }
 #endif
             if showCaptions {
                 CaptionOverlayView(player: player, segments: captionSegments).allowsHitTesting(false)

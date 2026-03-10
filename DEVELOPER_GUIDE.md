@@ -215,6 +215,10 @@ If playback reaches roughly 75% of the video duration, the app marks the video a
 
 [VideoCacheManager.swift](AceClass/VideoCacheManager.swift) can prepare a cached local copy for playback. This reduces repeated reads from external storage for smaller assets and exposes cache stats to the debug console.
 
+### MKV Compatibility Preparation
+
+When AVFoundation cannot open an `.mkv` file directly, [PlaybackCompatibilityManager.swift](AceClass/PlaybackCompatibilityManager.swift) prepares a compatible local `.mp4` copy with `ffmpeg` and reuses it across launches while the source file metadata stays unchanged.
+
 ## Countdown Logic
 
 `AppState` builds derived arrays for:
