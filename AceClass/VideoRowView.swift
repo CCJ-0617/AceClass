@@ -36,13 +36,11 @@ struct VideoRowView: View {
                     .overlay {
                         cardShape
                             .fill(cardAccentWash)
-                            .allowsHitTesting(false)
                     }
                     .glassEffect(rowGlass, in: cardShape)
                     .overlay(
                         cardShape
                             .strokeBorder(colorScheme == .dark ? Color.white.opacity(isPlaying ? 0.24 : 0.14) : Color.black.opacity(isPlaying ? 0.10 : 0.05))
-                            .allowsHitTesting(false)
                     )
                     .shadow(color: colorScheme == .dark ? .black.opacity(0.14) : .black.opacity(isPlaying ? 0.09 : 0.05), radius: isPlaying ? 24 : 16, y: isPlaying ? 12 : 7)
             }
@@ -95,7 +93,6 @@ struct VideoRowView: View {
             .overlay {
                 RoundedRectangle(cornerRadius: 22, style: .continuous)
                     .fill(cardAccentWash)
-                    .allowsHitTesting(false)
             }
     }
 
@@ -161,7 +158,7 @@ struct VideoRowView: View {
     @available(macOS 26.0, *)
     private var rowGlass: Glass {
         let tint = isPlaying ? Color.accentColor.opacity(0.18) : Color.white.opacity(0.08)
-        return Glass.regular.tint(tint)
+        return Glass.regular.tint(tint).interactive()
     }
 
     private var liquidGlassBackground: some View {

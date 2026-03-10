@@ -28,12 +28,10 @@ struct AppCardSurface: View {
                         endPoint: .bottomTrailing
                     )
                 )
-                .allowsHitTesting(false)
             }
             .overlay {
                 shape
                     .strokeBorder(borderColor, lineWidth: isSelected ? 1.4 : 1)
-                    .allowsHitTesting(false)
             }
             .shadow(color: shadowColor, radius: isSelected ? 22 : 14, y: isSelected ? 12 : 7)
             .shadow(color: topGlowColor, radius: 1.5, y: -1)
