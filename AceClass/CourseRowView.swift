@@ -44,11 +44,6 @@ struct CourseRowView: View {
                 MetadataChip(item: MetadataChipItem(title: course.completionText, systemImage: "checkmark.circle", tint: .green))
             }
 
-            if course.totalVideoCount > 0 {
-                ProgressView(value: course.completionRatio)
-                    .tint(accentColor)
-            }
-
             if course.targetDate != nil {
                 CountdownDisplay(course: course)
             }
