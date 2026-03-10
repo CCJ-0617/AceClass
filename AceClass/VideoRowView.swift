@@ -56,8 +56,6 @@ struct VideoRowView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .layoutPriority(1)
 
-                Spacer(minLength: 12)
-
                 watchedControl
                     .fixedSize()
             }
