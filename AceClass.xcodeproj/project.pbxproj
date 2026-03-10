@@ -113,6 +113,7 @@
 			buildConfigurationList = CE9C43002E1756A300E4B21D /* Build configuration list for PBXNativeTarget "AceClass" */;
 			buildPhases = (
 				CE9C42D82E1756A100E4B21D /* Sources */,
+				D1E12F5A7C284691A5E22001 /* Bundle ffmpeg */,
 				CE9C42D92E1756A100E4B21D /* Frameworks */,
 				CE9C42DA2E1756A100E4B21D /* Resources */,
 			);
@@ -245,6 +246,30 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		D1E12F5A7C284691A5E22001 /* Bundle ffmpeg */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(PROJECT_DIR)/scripts/bundle-ffmpeg.sh",
+			);
+			name = "Bundle ffmpeg";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/Tools/ffmpeg",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/bash;
+			shellScript = "\"${PROJECT_DIR}/scripts/bundle-ffmpeg.sh\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		CE9C42D82E1756A100E4B21D /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -306,6 +331,7 @@
 				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
 				ENABLE_RESOURCE_ACCESS_PRINTING = NO;
 				ENABLE_RESOURCE_ACCESS_USB = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				ENABLE_USER_SELECTED_FILES = readwrite;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = AceClass/Info.plist;
@@ -346,6 +372,7 @@
 				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
 				ENABLE_RESOURCE_ACCESS_PRINTING = NO;
 				ENABLE_RESOURCE_ACCESS_USB = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				ENABLE_USER_SELECTED_FILES = readwrite;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = AceClass/Info.plist;

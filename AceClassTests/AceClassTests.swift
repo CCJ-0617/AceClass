@@ -15,10 +15,29 @@ final class AceClassTests: XCTestCase {
         XCTAssertFalse(PlaybackCompatibilityManager.requiresCompatibilityCopy(for: URL(fileURLWithPath: "/tmp/lesson.mp4")))
     }
 
+    func testPlaybackCompatibilityManagerUsesExplicitFFmpegOverride() throws {
+        let rootURL = try makeTempDirectory()
+        let fakeFFmpegURL = rootURL.appendingPathComponent("ffmpeg")
+        try "#!/bin/sh\nexit 0\n".write(to: fakeFFmpegURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: fakeFFmpegURL.path)
+
+        let original = ProcessInfo.processInfo.environment["ACECLASS_FFMPEG_SOURCE"]
+        setenv("ACECLASS_FFMPEG_SOURCE", fakeFFmpegURL.path, 1)
+        defer {
+            if let original {
+                setenv("ACECLASS_FFMPEG_SOURCE", original, 1)
+            } else {
+                unsetenv("ACECLASS_FFMPEG_SOURCE")
+            }
+        }
+
+        XCTAssertEqual(try PlaybackCompatibilityManager.ffmpegExecutableURL().path, fakeFFmpegURL.path)
+    }
+
     func testPlaybackCompatibilityManagerCreatesPlayableCopyForMKV() async throws {
         let ffmpegURL: URL
         do {
-            ffmpegURL = try PlaybackCompatibilityManager.ffmpegExecutableURL()
+            ffmpegURL = try preferredFFmpegURL()
         } catch {
             throw XCTSkip("ffmpeg is not installed in this environment")
         }
@@ -46,7 +65,9 @@ final class AceClassTests: XCTestCase {
         let mkvPlayable = await PlaybackCompatibilityManager.isNativelyPlayable(mkvURL)
         XCTAssertFalse(mkvPlayable)
 
-        let compatibleURL = try await PlaybackCompatibilityManager.shared.preparePlayableURL(for: mkvURL)
+        let compatibleURL = try await withFFmpegOverride(ffmpegURL.path) {
+            try await PlaybackCompatibilityManager.shared.preparePlayableURL(for: mkvURL)
+        }
 
         XCTAssertEqual(compatibleURL.pathExtension.lowercased(), "mp4")
         XCTAssertTrue(FileManager.default.fileExists(atPath: compatibleURL.path))
@@ -278,5 +299,51 @@ final class AceClassTests: XCTestCase {
             let errorOutput = String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
             XCTAssertEqual(process.terminationStatus, 0, errorOutput)
         }.value
+    }
+
+    private func preferredFFmpegURL() throws -> URL {
+        let repoRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+
+        var candidates: [String] = []
+
+        #if arch(arm64)
+        candidates.append(repoRoot.appendingPathComponent("Vendor/ffmpeg/ffmpeg-arm64").path)
+        candidates.append("/opt/homebrew/bin/ffmpeg")
+        candidates.append("/usr/local/bin/ffmpeg")
+        #elseif arch(x86_64)
+        candidates.append(repoRoot.appendingPathComponent("Vendor/ffmpeg/ffmpeg-x86_64").path)
+        candidates.append("/usr/local/bin/ffmpeg")
+        candidates.append("/opt/homebrew/bin/ffmpeg")
+        #else
+        candidates.append("/opt/homebrew/bin/ffmpeg")
+        candidates.append("/usr/local/bin/ffmpeg")
+        #endif
+
+        candidates.append(repoRoot.appendingPathComponent("Vendor/ffmpeg/ffmpeg").path)
+        candidates.append("/usr/bin/ffmpeg")
+
+        for candidate in candidates where FileManager.default.isExecutableFile(atPath: candidate) {
+            return URL(fileURLWithPath: candidate)
+        }
+
+        throw PlaybackCompatibilityManager.PlaybackCompatibilityError.ffmpegNotInstalled
+    }
+
+    private func withFFmpegOverride<T>(
+        _ path: String,
+        operation: () async throws -> T
+    ) async throws -> T {
+        let original = ProcessInfo.processInfo.environment["ACECLASS_FFMPEG_SOURCE"]
+        setenv("ACECLASS_FFMPEG_SOURCE", path, 1)
+        defer {
+            if let original {
+                setenv("ACECLASS_FFMPEG_SOURCE", original, 1)
+            } else {
+                unsetenv("ACECLASS_FFMPEG_SOURCE")
+            }
+        }
+        return try await operation()
     }
 }

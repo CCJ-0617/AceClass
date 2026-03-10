@@ -65,6 +65,23 @@ final class PlaybackCompatibilityManager {
 
     static func ffmpegExecutableURL() throws -> URL {
         let fm = FileManager.default
+
+        if let overridePath = ProcessInfo.processInfo.environment["ACECLASS_FFMPEG_SOURCE"],
+           fm.isExecutableFile(atPath: overridePath) {
+            return URL(fileURLWithPath: overridePath)
+        }
+
+        let bundleCandidates = [
+            Bundle.main.resourceURL?.appendingPathComponent("Tools/ffmpeg"),
+            Bundle(for: PlaybackCompatibilityManager.self).resourceURL?.appendingPathComponent("Tools/ffmpeg")
+        ]
+
+        for candidateURL in bundleCandidates.compactMap({ $0 }) {
+            if fm.isExecutableFile(atPath: candidateURL.path) {
+                return candidateURL
+            }
+        }
+
         let envPaths = (ProcessInfo.processInfo.environment["PATH"] ?? "")
             .split(separator: ":")
             .map(String.init)

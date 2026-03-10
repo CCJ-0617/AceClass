@@ -217,7 +217,9 @@ If playback reaches roughly 75% of the video duration, the app marks the video a
 
 ### MKV Compatibility Preparation
 
-When AVFoundation cannot open an `.mkv` file directly, [PlaybackCompatibilityManager.swift](AceClass/PlaybackCompatibilityManager.swift) prepares a compatible local `.mp4` copy with `ffmpeg` and reuses it across launches while the source file metadata stays unchanged.
+When AVFoundation cannot open an `.mkv` file directly, [PlaybackCompatibilityManager.swift](AceClass/PlaybackCompatibilityManager.swift) prepares a compatible local `.mp4` copy and reuses it across launches while the source file metadata stays unchanged.
+
+During builds, [`scripts/bundle-ffmpeg.sh`](scripts/bundle-ffmpeg.sh) selects the best-matching `ffmpeg` binary for the target architecture, preferring vendored binaries under `Vendor/ffmpeg/`, then copies `ffmpeg` plus any non-system dylib dependencies into `AceClass.app/Contents/Resources/Tools`.
 
 ## Countdown Logic
 

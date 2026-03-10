@@ -142,7 +142,7 @@
 "player.loading.compatibility_failed" = "Unable to prepare this MKV file for playback.";
 "player.loading.compatibility_failed_detail" = "Unable to prepare this MKV file for playback: %@";
 "player.loading.compatibility_output_unplayable" = "A compatible playback copy was created, but macOS still could not open it.";
-"player.loading.ffmpeg_missing" = "This MKV file needs a compatibility conversion, but ffmpeg is not installed.";
+"player.loading.ffmpeg_missing" = "The built-in MKV converter is unavailable, and no system ffmpeg could be found.";
 "player.loading.failed" = "Playback Failed";
 "player.loading.missing_folder_access" = "The source folder permission is missing. Please reselect the folder.";
 "player.loading.no_error_details" = "The player did not return any usable error details.";

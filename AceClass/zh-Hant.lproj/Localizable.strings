@@ -142,7 +142,7 @@
 "player.loading.compatibility_failed" = "無法將此 MKV 檔準備成可播放格式。";
 "player.loading.compatibility_failed_detail" = "無法將此 MKV 檔準備成可播放格式：%@";
 "player.loading.compatibility_output_unplayable" = "已建立相容播放副本，但 macOS 仍無法開啟它。";
-"player.loading.ffmpeg_missing" = "這個 MKV 檔需要先做相容性轉換，但系統找不到 ffmpeg。";
+"player.loading.ffmpeg_missing" = "內建的 MKV 轉換器目前不可用，而且系統也找不到 ffmpeg。";
 "player.loading.failed" = "播放失敗";
 "player.loading.missing_folder_access" = "找不到來源資料夾權限，請重新選擇資料夾。";
 "player.loading.no_error_details" = "播放器沒有回傳可用的錯誤資訊。";
