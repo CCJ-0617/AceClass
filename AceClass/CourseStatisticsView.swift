@@ -38,6 +38,7 @@ struct UnwatchedVideosListView: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .padding(.vertical, 10)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 10) {
@@ -45,14 +46,17 @@ struct UnwatchedVideosListView: View {
                             UnwatchedVideoRowView(video: video, playAction: { await playAction(video) })
                         }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .frame(maxHeight: 260)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }
 
 struct CourseStatisticsView: View {
+    @Environment(\.colorScheme) private var colorScheme
     let stats: CourseStats
     let course: Course
     let unwatchedVideos: [VideoItem]
@@ -62,51 +66,54 @@ struct CourseStatisticsView: View {
         GeometryReader { geometry in
             let contentWidth = max(geometry.size.width - 48, 0)
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    headerCard
+            VStack(alignment: .leading, spacing: 20) {
+                headerCard
 
-                    HStack(spacing: 12) {
+                HStack(spacing: 12) {
                     MetricCard(title: L10n.tr("metric.total_videos"), value: "\(stats.totalVideos)", tint: .blue)
                     MetricCard(title: L10n.tr("metric.completed"), value: "\(stats.watchedVideos)", tint: .green)
                     MetricCard(title: L10n.tr("metric.pending"), value: "\(stats.unwatchedCount)", tint: .orange)
-                    }
+                }
 
-                    HStack(alignment: .center, spacing: 24) {
-                        progressRing
-                        VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .center, spacing: 24) {
+                    progressRing
+                    VStack(alignment: .leading, spacing: 12) {
                         Text(L10n.tr("course.progress_header"))
-                                .font(.headline)
-                            Text(course.learningStatusText)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
+                            .font(.headline)
+                        Text(course.learningStatusText)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
 
-                            ProgressView(value: stats.percentageWatched)
-                                .tint(course.unwatchedVideoCount == 0 ? .green : .accentColor)
+                        ProgressView(value: stats.percentageWatched)
+                            .tint(course.unwatchedVideoCount == 0 ? .green : .accentColor)
 
-                            HStack(spacing: 8) {
-                                MetadataChip(item: MetadataChipItem(title: course.completionText, systemImage: "checkmark.circle", tint: .green))
-                                if let targetSummaryText = course.targetSummaryText {
-                                    MetadataChip(item: MetadataChipItem(title: targetSummaryText, systemImage: "calendar.badge.clock", tint: .orange))
-                                }
+                        HStack(spacing: 8) {
+                            MetadataChip(item: MetadataChipItem(title: course.completionText, systemImage: "checkmark.circle", tint: .green))
+                            if let targetSummaryText = course.targetSummaryText {
+                                MetadataChip(item: MetadataChipItem(title: targetSummaryText, systemImage: "calendar.badge.clock", tint: .orange))
                             }
                         }
-                        Spacer()
                     }
-                    .padding(22)
-                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
-
-                    UnwatchedVideosListView(
-                        unwatchedVideos: unwatchedVideos,
-                        playAction: playUnwatchedVideoAction
-                    )
-                    .padding(22)
-                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+                    Spacer()
                 }
-                .frame(width: contentWidth, alignment: .leading)
-                .padding(24)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(22)
+                .background {
+                    AppCardSurface(colorScheme: colorScheme, cornerRadius: 28, tint: .accentColor, tintStrength: 0.06)
+                }
+
+                UnwatchedVideosListView(
+                    unwatchedVideos: unwatchedVideos,
+                    playAction: playUnwatchedVideoAction
+                )
+                .padding(22)
+                .background {
+                    AppCardSurface(colorScheme: colorScheme, cornerRadius: 28, tint: .orange, tintStrength: 0.06)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
+            .frame(width: contentWidth, height: max(geometry.size.height - 48, 0), alignment: .topLeading)
+            .padding(24)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
     }
 
@@ -123,18 +130,9 @@ struct CourseStatisticsView: View {
         }
         .padding(22)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            LinearGradient(
-                colors: [Color.accentColor.opacity(0.18), Color.accentColor.opacity(0.05)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            ),
-            in: RoundedRectangle(cornerRadius: 28, style: .continuous)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.35))
-        )
+        .background {
+            AppCardSurface(colorScheme: colorScheme, cornerRadius: 28, tint: .accentColor, tintStrength: 0.14, isSelected: true)
+        }
     }
 
     private var progressRing: some View {

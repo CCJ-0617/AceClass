@@ -8,7 +8,78 @@
 import SwiftUI
 import AVKit
 
+struct AppCardSurface: View {
+    let colorScheme: ColorScheme
+    var cornerRadius: CGFloat = 24
+    var tint: Color = .accentColor
+    var tintStrength: Double = 0.08
+    var isSelected: Bool = false
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+
+        shape
+            .fill(baseStyle)
+            .overlay {
+                shape.fill(
+                    LinearGradient(
+                        colors: overlayColors,
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+            }
+            .overlay {
+                shape
+                    .strokeBorder(borderColor, lineWidth: isSelected ? 1.4 : 1)
+            }
+            .shadow(color: shadowColor, radius: isSelected ? 22 : 14, y: isSelected ? 12 : 7)
+            .shadow(color: topGlowColor, radius: 1.5, y: -1)
+    }
+
+    private var baseStyle: AnyShapeStyle {
+        if colorScheme == .dark {
+            return AnyShapeStyle(.thinMaterial)
+        }
+        return AnyShapeStyle(Color.white.opacity(isSelected ? 0.94 : 0.88))
+    }
+
+    private var overlayColors: [Color] {
+        if colorScheme == .dark {
+            return [
+                Color.white.opacity(0.10),
+                tint.opacity(tintStrength),
+                Color.clear
+            ]
+        }
+        return [
+            Color.white.opacity(isSelected ? 0.78 : 0.62),
+            tint.opacity(tintStrength + (isSelected ? 0.05 : 0)),
+            Color.clear
+        ]
+    }
+
+    private var borderColor: Color {
+        if colorScheme == .dark {
+            return isSelected ? tint.opacity(0.44) : Color.white.opacity(0.14)
+        }
+        return isSelected ? tint.opacity(0.34) : Color.black.opacity(0.06)
+    }
+
+    private var shadowColor: Color {
+        if colorScheme == .dark {
+            return .black.opacity(isSelected ? 0.20 : 0.14)
+        }
+        return .black.opacity(isSelected ? 0.10 : 0.06)
+    }
+
+    private var topGlowColor: Color {
+        colorScheme == .dark ? .white.opacity(0.05) : .white.opacity(isSelected ? 0.72 : 0.52)
+    }
+}
+
 struct ContentView: View {
+    @Environment(\.colorScheme) private var colorScheme
     @StateObject private var appState = AppState()
     @State private var showFolderPicker = false
     @State private var localSelectedCourseID: UUID?
@@ -320,11 +391,9 @@ struct ContentView: View {
                 .textSelection(.enabled)
         }
         .padding(20)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.35))
-        )
+        .background {
+            AppCardSurface(colorScheme: colorScheme, cornerRadius: 24, tint: .accentColor, tintStrength: 0.08)
+        }
     }
 
     private func metadataItems(for video: VideoItem) -> [MetadataChipItem] {
@@ -361,6 +430,7 @@ struct ContentView: View {
 }
 
 struct SidebarHeroCard: View {
+    @Environment(\.colorScheme) private var colorScheme
     let sourceFolderURL: URL?
     let totalCourses: Int
     let totalVideos: Int
@@ -414,22 +484,14 @@ struct SidebarHeroCard: View {
             }
         }
         .padding(18)
-        .background(
-            LinearGradient(
-                colors: [Color.accentColor.opacity(0.18), Color.accentColor.opacity(0.04)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            ),
-            in: RoundedRectangle(cornerRadius: 24, style: .continuous)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.35))
-        )
+        .background {
+            AppCardSurface(colorScheme: colorScheme, cornerRadius: 24, tint: .accentColor, tintStrength: 0.14, isSelected: true)
+        }
     }
 }
 
 struct CourseOverviewCard: View {
+    @Environment(\.colorScheme) private var colorScheme
     let course: Course
 
     var body: some View {
@@ -464,15 +526,14 @@ struct CourseOverviewCard: View {
                 .tint(course.unwatchedVideoCount == 0 ? .green : .accentColor)
         }
         .padding(18)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.35))
-        )
+        .background {
+            AppCardSurface(colorScheme: colorScheme, cornerRadius: 24, tint: .accentColor, tintStrength: 0.09)
+        }
     }
 }
 
 struct MetricCard: View {
+    @Environment(\.colorScheme) private var colorScheme
     let title: String
     let value: String
     let tint: Color
@@ -489,7 +550,28 @@ struct MetricCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 10)
         .padding(.horizontal, 12)
-        .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(colorScheme == .dark ? tint.opacity(0.10) : Color.white.opacity(0.72))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color.white.opacity(colorScheme == .dark ? 0.06 : 0.52),
+                                    tint.opacity(colorScheme == .dark ? 0.06 : 0.10),
+                                    Color.clear
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .strokeBorder(colorScheme == .dark ? tint.opacity(0.14) : Color.black.opacity(0.05))
+                )
+        )
     }
 }
 
@@ -501,6 +583,7 @@ struct MetadataChipItem: Identifiable {
 }
 
 struct MetadataChip: View {
+    @Environment(\.colorScheme) private var colorScheme
     let item: MetadataChipItem
 
     var body: some View {
@@ -509,7 +592,18 @@ struct MetadataChip: View {
             .foregroundStyle(item.tint)
             .padding(.vertical, 6)
             .padding(.horizontal, 10)
-            .background(item.tint.opacity(0.10), in: Capsule())
+            .background(
+                Capsule()
+                    .fill(colorScheme == .dark ? item.tint.opacity(0.10) : Color.white.opacity(0.78))
+                    .overlay(
+                        Capsule()
+                            .fill(item.tint.opacity(colorScheme == .dark ? 0.04 : 0.10))
+                    )
+                    .overlay(
+                        Capsule()
+                            .strokeBorder(colorScheme == .dark ? item.tint.opacity(0.12) : Color.black.opacity(0.04))
+                    )
+            )
     }
 }
 
@@ -534,6 +628,7 @@ struct FlowMetadataRow: View {
 }
 
 struct EmptyStateCard: View {
+    @Environment(\.colorScheme) private var colorScheme
     let icon: String
     let title: String
     let subtitle: String
@@ -553,7 +648,9 @@ struct EmptyStateCard: View {
         }
         .padding(28)
         .frame(maxWidth: .infinity)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .background {
+            AppCardSurface(colorScheme: colorScheme, cornerRadius: 24, tint: .accentColor, tintStrength: 0.05)
+        }
     }
 }
 

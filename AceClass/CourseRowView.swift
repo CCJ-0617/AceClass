@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct CourseRowView: View {
+    @Environment(\.colorScheme) private var colorScheme
     let course: Course
     var isSelected: Bool = false
 
@@ -53,15 +54,15 @@ struct CourseRowView: View {
             }
         }
         .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(isSelected ? accentColor.opacity(0.10) : .clear)
-                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .strokeBorder(isSelected ? accentColor.opacity(0.6) : accentColor.opacity(0.18), lineWidth: isSelected ? 1.8 : 1)
-        )
+        .background {
+            AppCardSurface(
+                colorScheme: colorScheme,
+                cornerRadius: 20,
+                tint: accentColor,
+                tintStrength: isSelected ? 0.14 : 0.06,
+                isSelected: isSelected
+            )
+        }
         .animation(.smooth(duration: 0.18), value: isSelected)
     }
 

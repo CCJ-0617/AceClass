@@ -8,6 +8,7 @@
 import SwiftUI
 
 struct VideoRowView: View {
+    @Environment(\.colorScheme) private var colorScheme
     @Binding var video: VideoItem
     let videoURL: URL
     let isPlaying: Bool
@@ -23,13 +24,25 @@ struct VideoRowView: View {
             GlassEffectContainer(spacing: 14) {
                 cardContent
                     .padding(18)
-                    .background(cardAccentWash)
-                    .clipShape(cardShape)
+                    .background {
+                        AppCardSurface(
+                            colorScheme: colorScheme,
+                            cornerRadius: 26,
+                            tint: isPlaying ? .accentColor : .blue,
+                            tintStrength: isPlaying ? 0.14 : 0.05,
+                            isSelected: isPlaying
+                        )
+                    }
+                    .overlay {
+                        cardShape
+                            .fill(cardAccentWash)
+                    }
                     .glassEffect(rowGlass, in: cardShape)
                     .overlay(
                         cardShape
-                            .strokeBorder(Color.white.opacity(isPlaying ? 0.30 : 0.16))
+                            .strokeBorder(colorScheme == .dark ? Color.white.opacity(isPlaying ? 0.24 : 0.14) : Color.black.opacity(isPlaying ? 0.10 : 0.05))
                     )
+                    .shadow(color: colorScheme == .dark ? .black.opacity(0.14) : .black.opacity(isPlaying ? 0.09 : 0.05), radius: isPlaying ? 24 : 16, y: isPlaying ? 12 : 7)
             }
         } else {
             legacyCard
@@ -67,12 +80,20 @@ struct VideoRowView: View {
 
     private var legacyCard: some View {
         cardContent
-        .padding(16)
-        .background(backgroundColor, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .strokeBorder(borderColor)
-        )
+            .padding(16)
+            .background {
+                AppCardSurface(
+                    colorScheme: colorScheme,
+                    cornerRadius: 22,
+                    tint: isPlaying ? .accentColor : .blue,
+                    tintStrength: isPlaying ? 0.14 : 0.04,
+                    isSelected: isPlaying
+                )
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(cardAccentWash)
+            }
     }
 
     @ViewBuilder
@@ -118,23 +139,15 @@ struct VideoRowView: View {
         return items
     }
 
-    private var backgroundColor: Color {
-        isPlaying ? Color.accentColor.opacity(0.12) : Color.secondary.opacity(0.05)
-    }
-
-    private var borderColor: Color {
-        (isPlaying ? Color.accentColor : Color.secondary).opacity(isPlaying ? 0.30 : 0.10)
-    }
-
     private var cardShape: RoundedRectangle {
         RoundedRectangle(cornerRadius: 26, style: .continuous)
     }
 
-    private var cardAccentWash: some View {
+    private var cardAccentWash: LinearGradient {
         LinearGradient(
             colors: [
-                Color.white.opacity(0.18),
-                isPlaying ? Color.accentColor.opacity(0.12) : Color.clear,
+                Color.white.opacity(colorScheme == .dark ? 0.16 : 0.52),
+                isPlaying ? Color.accentColor.opacity(colorScheme == .dark ? 0.12 : 0.10) : Color.blue.opacity(colorScheme == .dark ? 0.02 : 0.04),
                 Color.clear
             ],
             startPoint: .topLeading,
