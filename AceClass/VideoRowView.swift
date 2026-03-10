@@ -13,6 +13,8 @@ struct VideoRowView: View {
     let isPlaying: Bool
     let playAction: () async -> Void
     let saveAction: () async -> Void
+    @FocusState private var isTitleFieldFocused: Bool
+    @State private var isEditingTitle = false
 
     @ViewBuilder
     var body: some View {
@@ -39,26 +41,25 @@ struct VideoRowView: View {
                 playControl
 
                 VStack(alignment: .leading, spacing: 8) {
-                    TextField(L10n.tr("video.title_placeholder"), text: $video.displayName)
-                        .font(.headline)
-                        .textFieldStyle(.plain)
-                        .onChange(of: video.displayName) { _, _ in
-                            save()
-                        }
+                    titleView
 
                     if !video.fileName.isEmpty {
                         Text(video.fileName)
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                            .lineLimit(2)
                             .truncationMode(.middle)
+                            .fixedSize(horizontal: false, vertical: true)
                             .textSelection(.enabled)
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .layoutPriority(1)
 
                 Spacer(minLength: 12)
 
                 watchedControl
+                    .fixedSize()
             }
 
             FlowMetadataRow(items: metadataItems)
@@ -244,5 +245,45 @@ struct VideoRowView: View {
         Task {
             await saveAction()
         }
+    }
+
+    @ViewBuilder
+    private var titleView: some View {
+        if isEditingTitle {
+            TextField(L10n.tr("video.title_placeholder"), text: $video.displayName)
+                .font(.headline)
+                .textFieldStyle(.plain)
+                .focused($isTitleFieldFocused)
+                .onChange(of: video.displayName) { _, _ in
+                    save()
+                }
+                .onChange(of: isTitleFieldFocused) { _, focused in
+                    if !focused {
+                        isEditingTitle = false
+                    }
+                }
+                .onSubmit {
+                    finishTitleEditing()
+                }
+        } else {
+            HoverMarqueeText(text: video.resolvedTitle, font: .headline)
+                .help(video.resolvedTitle)
+                .onTapGesture {
+                    beginTitleEditing()
+                }
+        }
+    }
+
+    private func beginTitleEditing() {
+        isEditingTitle = true
+
+        DispatchQueue.main.async {
+            isTitleFieldFocused = true
+        }
+    }
+
+    private func finishTitleEditing() {
+        isTitleFieldFocused = false
+        isEditingTitle = false
     }
 }

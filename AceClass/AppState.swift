@@ -84,7 +84,7 @@ class AppState: ObservableObject {
     // Diagnostics
     private struct PlayerDiagnostics { var selectionRequests=0; var executedSelections=0; var playerInitSuccess=0; var playerInitFailure=0; var benignCancellations=0; var lastInitDuration: TimeInterval=0; var avgInitDuration: TimeInterval=0 }
     private var diagnostics = PlayerDiagnostics()
-    private var loadCoursesTask: Task<Void, Never>? = nil
+    private var loadCoursesTask: Task<Void, Error>? = nil
     private var currentInitStart: Date? = nil
     nonisolated static let supportedVideoExtensions: [String] = [
         "mp4", "mov", "m4v", "mkv",

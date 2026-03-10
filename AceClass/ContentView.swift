@@ -21,7 +21,7 @@ struct ContentView: View {
                 courseSidebar
             } content: {
                 videoList
-                    .navigationSplitViewColumnWidth(min: 280, ideal: 360, max: 500)
+                    .navigationSplitViewColumnWidth(min: 340, ideal: 460, max: 640)
             } detail: {
                 videoPlayerArea
             }
